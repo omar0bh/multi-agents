@@ -19,10 +19,13 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# Add project root to sys.path
+from dotenv import load_dotenv
+
+# Add project root to sys.path and load environment variables
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+load_dotenv(PROJECT_ROOT / ".env")
 
 import httpx
 
@@ -30,7 +33,7 @@ from app.tools.file_reader import delete_path, find_file, read_text_file
 from app.tools.project_scaffold import create_project_on_desktop, get_desktop_dir
 from app.tools.terminal_tool import run_safe_command
 
-DEFAULT_SERVER_URL = os.getenv("AWS_SERVER_URL", "http://127.0.0.1:8000")
+DEFAULT_SERVER_URL = os.getenv("AWS_SERVER_URL", "http://51.20.12.138")
 POLL_INTERVAL = 10  # Seconds between heartbeats
 
 
@@ -88,13 +91,14 @@ def run_bridge_loop(server_url: str):
     print("=" * 60)
     print("🟢 Bridge running... Press Ctrl+C to stop.")
 
-    client = httpx.Client(timeout=15.0)
+    client = httpx.Client(trust_env=False, timeout=10.0)
 
     while True:
         try:
             info = gather_pc_info()
             resp = client.post(heartbeat_url, json=info)
             if resp.status_code == 200:
+                print(f"💓 Heartbeat sent ({time.strftime('%H:%M:%S')}) - PC is ONLINE on AWS")
                 data = resp.json()
                 pending_tasks = data.get("pending_tasks", [])
                 if pending_tasks:
