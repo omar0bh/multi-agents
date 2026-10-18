@@ -1,0 +1,29 @@
+# Environment & Secrets (NEVER COMMIT SENSITIVE DATA)
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Databases & Logs
+*.db
+*.sqlite3
+*.log
+
+# OS & IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

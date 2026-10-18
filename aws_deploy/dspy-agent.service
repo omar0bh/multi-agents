@@ -1,0 +1,18 @@
+[Unit]
+Description=DSPy Multi-Agent Telegram Employee & Cloud API
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dspy-multi-agents
+Environment="PATH=/home/ubuntu/dspy-multi-agents/.venv/bin"
+ExecStart=/home/ubuntu/dspy-multi-agents/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
