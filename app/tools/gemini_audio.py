@@ -7,7 +7,7 @@ from app.config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "models/gemini-2.5-flash"
+GEMINI_MODEL = "models/gemini-3.8-flash"
 
 
 def analyze_audio_with_gemini(
@@ -36,7 +36,6 @@ def analyze_audio_with_gemini(
 
     b64_data = base64.b64encode(audio_bytes).decode("utf-8")
 
-    # Use v1beta endpoint with gemini-2.5-flash or gemini-1.5-flash
     url = f"https://generativelanguage.googleapis.com/v1beta/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [
@@ -58,17 +57,11 @@ def analyze_audio_with_gemini(
         with httpx.Client(timeout=45.0) as client:
             resp = client.post(url, json=payload)
             if resp.status_code != 200:
-                # Try fallback model if 2.5 is not available
-                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-                fallback_resp = client.post(fallback_url, json=payload)
-                if fallback_resp.status_code == 200:
-                    resp = fallback_resp
-                else:
-                    return {
-                        "ok": False,
-                        "status_code": resp.status_code,
-                        "error": f"Gemini Audio API error: {resp.text}",
-                    }
+                return {
+                    "ok": False,
+                    "status_code": resp.status_code,
+                    "error": f"Gemini Audio API error: {resp.text}",
+                }
 
             data = resp.json()
             candidates = data.get("candidates", [])
@@ -84,3 +77,4 @@ def analyze_audio_with_gemini(
     except Exception as exc:
         logger.exception("Failed to analyze audio with Gemini: %s", exc)
         return {"ok": False, "error": str(exc)}
+
