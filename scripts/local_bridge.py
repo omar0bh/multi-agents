@@ -68,7 +68,8 @@ def execute_local_task(action: str, params: dict) -> dict:
     try:
         if action == "create_project":
             name = params.get("name", "project")
-            return create_project_on_desktop(name)
+            target_location = params.get("target_location") or params.get("folder")
+            return create_project_on_desktop(name, target_location=target_location)
 
         elif action == "run_command":
             cmd = params.get("cmd", "")
@@ -80,7 +81,7 @@ def execute_local_task(action: str, params: dict) -> dict:
 
         elif action == "download_image":
             query = params.get("query", "")
-            folder = params.get("folder", "vedio")
+            folder = params.get("folder", "videos")
             filename = params.get("filename", "")
             return download_web_image(query, folder_name=folder, filename=filename)
 

@@ -45,14 +45,9 @@ def download_web_image(
     if not image_candidates:
         return {"ok": False, "error": f"No images found for query: '{clean_query}'"}
 
-    # 2. Determine target directory on Desktop
-    desktop = get_desktop_dir()
-    if folder_name and folder_name.strip():
-        # Handle "vedio" or "video" or any custom folder name
-        clean_folder = folder_name.strip().strip("/\\")
-        target_dir = desktop / clean_folder
-    else:
-        target_dir = desktop
+    # 2. Determine target directory using the 6 standard user folders
+    from app.tools.user_folders import resolve_user_destination, get_user_folder
+    target_dir, category = resolve_user_destination(folder_name, default_category="pictures")
 
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -108,6 +103,15 @@ def download_web_image(
 
                         save_path = target_dir / final_filename
                         save_path.write_bytes(resp.content)
+
+                        # If saved to Videos and desktop/vedio folder exists, mirror it so user finds it in both places
+                        try:
+                            from app.tools.project_scaffold import get_desktop_dir
+                            desktop_vedio = get_desktop_dir() / "vedio"
+                            if desktop_vedio.is_dir() and category == "videos":
+                                (desktop_vedio / final_filename).write_bytes(resp.content)
+                        except Exception:
+                            pass
 
                         logger.info("Successfully saved image to %s (%d bytes)", save_path, len(resp.content))
                         return {

@@ -402,7 +402,25 @@ class TelegramEmployeeBot:
         if text_stripped.startswith(("/image", "/img", "/download_img")) or (
             has_image_kw and has_action_kw and any(w in lowered for w in ("desktop", "bureau", "folder", "dossier", "vedio", "video", "web", "fl web", "f "))
         ):
-            folder = "vedio" if any(w in lowered for w in ("vedio", "video")) else ""
+            # Determine target folder category based on user message (Videos, Pictures, Documents, Desktop, etc.)
+            if any(w in lowered for w in ("vedio", "video", "videos", "vidéo", "فيديو", "فيديوهات")):
+                folder = "videos"
+                folder_label = "الفيديوهات (Videos)"
+            elif any(w in lowered for w in ("picture", "pictures", "photo", "photos", "الصور", "صور")):
+                folder = "pictures"
+                folder_label = "الصور (Pictures)"
+            elif any(w in lowered for w in ("document", "documents", "doc", "docs", "مستند", "مستندات")):
+                folder = "documents"
+                folder_label = "المستندات (Documents)"
+            elif any(w in lowered for w in ("download", "downloads", "telechargement", "تنزيلات")):
+                folder = "downloads"
+                folder_label = "التنزيلات (Downloads)"
+            elif any(w in lowered for w in ("desktop", "bureau", "biro", "سطح المكتب")):
+                folder = "desktop"
+                folder_label = "سطح المكتب (Desktop)"
+            else:
+                folder = "pictures"
+                folder_label = "الصور (Pictures)"
 
             # Extract search query
             patterns = [
@@ -430,7 +448,7 @@ class TelegramEmployeeBot:
                     await self.send_message(
                         chat_id,
                         f"🌉 **جاري إرسال المهمة إلى حاسوبك الشخصي المتصل...**\n"
-                        f"🔍 جاري البحث في الويب عن صورة `{query}` وتحميلها وحفظها داخل مجلد `{folder or 'سطح المكتب'}` على حاسوبك (Task #{task_id})."
+                        f"🔍 جاري البحث في الويب عن صورة `{query}` وتحميلها وحفظها داخل مجلد `{folder_label}` على حاسوبك (Task #{task_id})."
                     )
                     return
                 else:
@@ -438,7 +456,7 @@ class TelegramEmployeeBot:
                     await self.send_message(
                         chat_id,
                         f"📥 **حاسوبك الشخصي مغلق حالياً (Offline).**\n\n"
-                        f"تم حفظ أمر البحث وتحميل صورة `{query}` داخل مجلد `{folder or 'سطح المكتب'}` في طابور المهام (Task #{task_id}).\n"
+                        f"تم حفظ أمر البحث وتحميل صورة `{query}` داخل مجلد `{folder_label}` في طابور المهام (Task #{task_id}).\n"
                         f"⚡ بمجرد تشغيل حاسوبك، سيقوم الجسر بتحميلها فوراً وإشعارك هنا!"
                     )
                     return
@@ -490,35 +508,55 @@ class TelegramEmployeeBot:
                 if name in ("my_new_project", "on", "in", "desktop", "bureau", "file", "folder"):
                     name = parts[-1].strip(",.!?\"':;")
 
+            # Determine target user folder for project creation (Desktop, Documents, Videos, etc.)
+            if any(w in lowered for w in ("vedio", "video", "videos", "vidéo", "فيديو", "فيديوهات")):
+                target_loc = "videos"
+                loc_label = "الفيديوهات (Videos)"
+            elif any(w in lowered for w in ("document", "documents", "doc", "docs", "مستند", "مستندات", "المستندات")):
+                target_loc = "documents"
+                loc_label = "المستندات (Documents)"
+            elif any(w in lowered for w in ("picture", "pictures", "photo", "photos", "الصور", "صور")):
+                target_loc = "pictures"
+                loc_label = "الصور (Pictures)"
+            elif any(w in lowered for w in ("download", "downloads", "telechargement", "تنزيلات")):
+                target_loc = "downloads"
+                loc_label = "التنزيلات (Downloads)"
+            elif any(w in lowered for w in ("music", "audio", "موسيقى")):
+                target_loc = "music"
+                loc_label = "الموسيقى (Music)"
+            else:
+                target_loc = "desktop"
+                loc_label = "سطح المكتب (Desktop)"
+
             # If deployed in the cloud (Linux), dispatch to Local PC Bridge if available
             import os
             if os.name != "nt":
                 if bridge_manager.is_online:
-                    task_id = bridge_manager.queue_task("create_project", {"name": name}, chat_id=chat_id)
+                    task_id = bridge_manager.queue_task("create_project", {"name": name, "target_location": target_loc}, chat_id=chat_id)
                     await self.send_message(
                         chat_id,
                         f"🌉 **جاري إرسال الأمر إلى حاسوبك الشخصي المتصل...**\n"
-                        f"🏗️ سيتم إنشاء مشروع `{name}` على سطح المكتب الآن عبر الجسر السحابي (Task #{task_id})."
+                        f"🏗️ سيتم إنشاء مشروع `{name}` داخل `{loc_label}` الآن عبر الجسر السحابي (Task #{task_id})."
                     )
                     return
                 else:
-                    task_id = bridge_manager.queue_task("create_project", {"name": name}, chat_id=chat_id)
+                    task_id = bridge_manager.queue_task("create_project", {"name": name, "target_location": target_loc}, chat_id=chat_id)
                     await self.send_message(
                         chat_id,
                         f"📥 **حاسوبك الشخصي مغلق حالياً (Offline).**\n\n"
-                        f"تم حفظ أمر إنشاء مشروع `{name}` في طابور المهام (Task #{task_id}).\n"
-                        f"⚡ بمجرد تشغيل حاسوبك، سيقوم الجسر بإنشائه على سطح المكتب فوراً وإشعارك هنا!"
+                        f"تم حفظ أمر إنشاء مشروع `{name}` داخل `{loc_label}` في طابور المهام (Task #{task_id}).\n"
+                        f"⚡ بمجرد تشغيل حاسوبك، سيقوم الجسر بإنشائه فوراً وإشعارك هنا!"
                     )
                     return
 
             # Running locally on PC
-            await self.send_message(chat_id, f"🏗️ جاري إنشاء المشروع `{name}` على سطح المكتب (Desktop)...")
-            res = create_project_on_desktop(name)
+            await self.send_message(chat_id, f"🏗️ جاري إنشاء المشروع `{name}` داخل `{loc_label}`...")
+            res = create_project_on_desktop(name, target_location=target_loc)
             if res.get("ok"):
                 files_str = "\n".join(f"- `{f}`" for f in res.get("files", []))
                 await self.send_message(
                     chat_id,
-                    f"🎉 **تم إنشاء المشروع بنجاح على سطح المكتب!**\n\n"
+                    f"🎉 **تم إنشاء المشروع بنجاح داخل `{loc_label}`!**\n\n"
                     f"📁 **المسار:** `{res.get('path')}`\n"
                     f"📄 **الملفات التي تم إنشاؤها:**\n{files_str}\n\n"
                     f"💡 *يمكنك فتحه وتشغيله مباشرة على حاسوبك أو تعديله من هاتفك!*"

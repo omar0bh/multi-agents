@@ -20,10 +20,15 @@ def get_desktop_dir() -> Path:
     return home
 
 
-def create_project_on_desktop(project_name: str, files: dict[str, str] | None = None) -> dict:
-    """Create a project folder on the user's Desktop with specified files."""
-    desktop = get_desktop_dir()
-    target_dir = desktop / project_name
+def create_project_on_desktop(
+    project_name: str,
+    files: dict[str, str] | None = None,
+    target_location: str | None = None,
+) -> dict:
+    """Create a project folder in the specified user folder (Desktop, Documents, Videos, Pictures, etc.)."""
+    from app.tools.user_folders import resolve_user_destination
+    base_dir, category = resolve_user_destination(target_location, default_category="desktop")
+    target_dir = base_dir / project_name
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
 
