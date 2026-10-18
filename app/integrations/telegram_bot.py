@@ -139,9 +139,29 @@ class TelegramEmployeeBot:
                 "• 🚀 `/status` و `/push`: فحص ومزامنة كود المشروع مع Git ومستودعك السحابي.\n"
                 "• 📧 `/email`: إرسال رسائل بريد إلكتروني مع مرفقات تلقائياً عبر Gmail.\n"
                 "• 📸 إرسال الصور: حل المسائل وتحليل الصور عبر الذكاء المزدوج (Gemini + Groq) بإجابات مختصرة ومباشرة.\n"
-                "• ⚙️ `/run أمر`: تنفيذ أوامر برمجية وتثبيت مكتبات بأمان وحماية لنظامك."
+                "• ⚙️ `/run أمر`: تنفيذ أوامر برمجية وتثبيت مكتبات بأمان وحماية لنظامك.\n"
+                "• 🧪 `/test` أو *'دير تيست للصلاحيات'*: فحص شامل وتشغيل تجريبي فوري لجميع أدوات ومهام النظام."
             )
             await self.send_message(chat_id, welcome)
+            return
+
+        # Command: System Self-Test & Diagnostics (/test, /diagnose, or natural query)
+        if text_stripped.startswith(("/test", "/diag", "/check", "/doctor")) or any(
+            p in lowered for p in (
+                "dir test", "test lge3", "test tasks", "sla7yat", "sla7iat", "chof sla7yat",
+                "test system", "system test", "diagnostic", "test lkoul", "test kaml", "testi", "test lya"
+            )
+        ):
+            await self.send_message(chat_id, "🧪 **جاري تشغيل الفحص الآلي الشامل لجميع الوظائف والمهام والصلاحيات...**\n⏳ ثواني معدودة لفحص الجسر، الملفات، التيرمينال، الصوت، الذكاء الاصطناعي...")
+            try:
+                from app.tools.diagnostics import run_full_system_diagnostic, format_diagnostic_report
+                loop = asyncio.get_running_loop()
+                diag_results = await loop.run_in_executor(None, run_full_system_diagnostic)
+                report_msg = format_diagnostic_report(diag_results)
+                await self.send_message(chat_id, report_msg)
+            except Exception as e:
+                logger.error("Diagnostic error: %s", e)
+                await self.send_message(chat_id, f"⚠️ خطأ أثناء الفحص الشامل: `{e}`")
             return
 
         # Command: Bridge / PC Status (/bridge, /pc, or natural query)
