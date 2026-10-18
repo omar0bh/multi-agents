@@ -517,7 +517,7 @@ class TelegramEmployeeBot:
         await self.send_message(
             chat_id,
             "🎙️ **استلمت رسالتك الصوتية!**\n"
-            "⏳ جاري الاستماع إليها وتحليلها والإجابة عليها بواسطة **Gemini Flash**..."
+            "⏳ جاري الاستماع إليها وتحويلها إلى نص فوري عبر **Groq Whisper**..."
         )
 
         try:
@@ -535,8 +535,19 @@ class TelegramEmployeeBot:
                     return
                 audio_bytes = audio_resp.content
 
-            # 2. Analyze with Gemini Audio
+            # 2. Transcribe with ultra-fast Groq Whisper
+            from app.tools.audio_transcriber import transcribe_audio_with_groq
             loop = asyncio.get_running_loop()
+            trans_res = await loop.run_in_executor(None, transcribe_audio_with_groq, audio_bytes, "voice.ogg")
+
+            if trans_res.get("ok") and trans_res.get("text"):
+                spoken_text = trans_res.get("text").strip()
+                await self.send_message(chat_id, f"🎙️ **سمعتك قلتي:**\n`\"{spoken_text}\"`\n\n⚡ جاري تنفيذ طلبك فوراً...")
+                # Pass the transcribed text into the normal agent/action pipeline!
+                await self.handle_user_message(chat_id, spoken_text, user_id)
+                return
+
+            # Fallback to Gemini Audio if Groq failed
             res = await loop.run_in_executor(
                 None,
                 analyze_audio_with_gemini,
@@ -546,7 +557,7 @@ class TelegramEmployeeBot:
             )
 
             if not res.get("ok"):
-                await self.send_message(chat_id, f"❌ خطأ أثناء معالجة الصوت: {res.get('error')}")
+                await self.send_message(chat_id, f"❌ خطأ أثناء معالجة الصوت: {trans_res.get('error') or res.get('error')}")
                 return
 
             reply = f"🎙️ **رد المساعد الذكي:**\n\n{res.get('text')}"
