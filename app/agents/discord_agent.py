@@ -232,3 +232,101 @@ class DiscordArchitectAgent:
                 f"📜 **القوانين والترحيب:** تم نشر رسالة القوانين الرسمية تلقائياً!"
             ),
         }
+
+    def clone_server(self, source_guild_id: str, target_guild_id: str | None = None) -> dict:
+        """Read categories, channels, and roles from source_guild_id and create a blueprint to apply on target server."""
+        source_data = get_guild_details(source_guild_id)
+        if not source_data.get("ok"):
+            return {
+                "ok": False,
+                "error": (
+                    f"تعذر قراءة السيرفر `{source_guild_id}`: {source_data.get('error')}.\n\n"
+                    f"💡 **ملاحظة أمان من ديسكورد:**\n"
+                    f"ديسكورد كتحمي خصوصية السيرفرات، وما كتسمحش لأي بوت يقرأ القنوات إلا إذا كان **الـ Bot مدعو داخل داك السيرفر**.\n\n"
+                    f"📸 **الحل الذكي والسهل:**\n"
+                    f"إلا ما قدرتيش تدخل البوت لداك السيرفر، **صيفط ليا غير سكرين شوت (Screenshot)** للقنوات والرتب من تيليجرام، وغادي يقرأها الذكاء الاصطناعي وينسخ ليك التصميم ديالها بالملي!"
+                ),
+            }
+
+        guild_info = source_data["guild"]
+        raw_channels = source_data.get("channels", [])
+        raw_roles = source_data.get("roles", [])
+
+        # Filter and structure roles (ignore @everyone and bot integrations)
+        roles = []
+        for r in sorted(raw_roles, key=lambda x: x.get("position", 0), reverse=True):
+            if r["name"] == "@everyone" or r.get("managed"):
+                continue
+            roles.append({
+                "name": r["name"],
+                "color": r.get("color", 0),
+                "hoist": r.get("hoist", True),
+            })
+
+        # Separate categories and channels
+        categories_map = {}
+        uncategorized_channels = []
+        sorted_channels = sorted(raw_channels, key=lambda x: x.get("position", 0))
+
+        for ch in sorted_channels:
+            if ch.get("type") == 4:
+                categories_map[ch["id"]] = {
+                    "name": ch["name"],
+                    "channels": [],
+                }
+
+        for ch in sorted_channels:
+            ch_type = "voice" if ch.get("type") == 2 else "text"
+            if ch.get("type") == 4:
+                continue
+            parent_id = ch.get("parent_id")
+            ch_obj = {"name": ch["name"], "type": ch_type, "topic": ch.get("topic") or ""}
+            if parent_id and parent_id in categories_map:
+                categories_map[parent_id]["channels"].append(ch_obj)
+            else:
+                uncategorized_channels.append(ch_obj)
+
+        categories = list(categories_map.values())
+        if uncategorized_channels:
+            categories.insert(0, {"name": "📌 │ GENERAL", "channels": uncategorized_channels})
+
+        blueprint = {
+            "theme": f"نسخة طبق الأصل من {guild_info.get('name', 'Reference Server')}",
+            "roles": roles,
+            "categories": categories,
+            "rules_embed": {
+                "title": f"📜 قوانين {guild_info.get('name')}",
+                "description": "يرجى الالتزام بالاحترام المتبادل لضمان بيئة آمنة وممتعة للجميع.",
+                "color": 0x3498DB,
+            },
+        }
+
+        # Determine target server (your server)
+        guilds = get_bot_guilds()
+        target_guild = None
+        if target_guild_id:
+            for g in guilds:
+                if g["id"] == str(target_guild_id):
+                    target_guild = g
+                    break
+        if not target_guild:
+            for g in guilds:
+                if g["id"] != str(source_guild_id):
+                    target_guild = g
+                    break
+            if not target_guild and guilds:
+                target_guild = guilds[0]
+
+        target_id = target_guild["id"] if target_guild else source_guild_id
+        target_name = target_guild["name"] if target_guild else "Your Server"
+
+        self.last_planned_blueprint = blueprint
+        self.last_target_guild_id = target_id
+
+        preview_text = self.format_preview(target_name, blueprint)
+        return {
+            "ok": True,
+            "blueprint": blueprint,
+            "preview": preview_text,
+            "source_name": guild_info.get("name"),
+        }

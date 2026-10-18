@@ -169,6 +169,40 @@ class TelegramEmployeeBot:
                     await self.send_message(chat_id, f"⚠️ حدث خطأ أثناء البناء: `{e}`")
                 return
 
+            # Check for Clone Server Intent (/discord clone <ID> or kopi/clone)
+            if "clone" in lowered or "copi" in lowered or "انسخ" in lowered or "نقل" in lowered:
+                words = text_stripped.split()
+                target_id = ""
+                for w in words:
+                    w_clean = w.strip("<>#:@,!?. ")
+                    if w_clean.isdigit() and len(w_clean) >= 15:
+                        target_id = w_clean
+                        break
+
+                if target_id:
+                    await self.send_message(chat_id, f"🔍 **جاري فحص ونسخ هيكل السيرفر `{target_id}` بالكامل...**\n⏳ قراءة الرتب، القنوات، الأقسام، والصلاحيات...")
+                    try:
+                        loop = asyncio.get_running_loop()
+                        res = await loop.run_in_executor(None, self.discord_agent.clone_server, target_id)
+                        if res.get("ok"):
+                            await self.send_message(chat_id, res.get("preview"))
+                        else:
+                            await self.send_message(chat_id, f"❌ {res.get('error')}")
+                    except Exception as e:
+                        logger.error("Discord clone error: %s", e)
+                        await self.send_message(chat_id, f"⚠️ خطأ أثناء نسخ السيرفر: `{e}`")
+                    return
+                else:
+                    await self.send_message(
+                        chat_id,
+                        "💡 **لنسخ سيرفر بواسطة الـ ID:**\n"
+                        "يرجى كتابة الأمر مع ID السيرفر، مثال:\n"
+                        "`/discord clone 1561491742367420416`\n\n"
+                        "⚠️ *تذكير أمان:* يجب أن يكون البوت عضواً داخل ذلك السيرفر ليسمح ديسكورد بقراءته.\n"
+                        "📸 *أو أرسل سكرين شوت لقنوات السيرفر وسيقوم الذكاء الاصطناعي بنسخها فوراً!*"
+                    )
+                    return
+
             # Otherwise, Generate or Preview Plan
             theme = "gaming"
             if any(k in lowered for k in ("code", "coding", "dev", "برمجة", "تطوير")):
