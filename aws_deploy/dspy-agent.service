@@ -6,7 +6,7 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/home/ubuntu/dspy-multi-agents
 Environment="PATH=/home/ubuntu/dspy-multi-agents/.venv/bin"
-ExecStart=/home/ubuntu/dspy-multi-agents/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+ExecStart=/home/ubuntu/dspy-multi-agents/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 
 Restart=always
 RestartSec=5
