@@ -48,9 +48,22 @@ def gather_pc_info() -> dict:
     }
 
 
+def safe_print(msg: str):
+    try:
+        text = str(msg) + "\n"
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+        sys.stdout.buffer.flush()
+    except Exception:
+        try:
+            clean = str(msg).encode("ascii", errors="replace").decode("ascii")
+            print(clean, flush=True)
+        except Exception:
+            pass
+
+
 def execute_local_task(action: str, params: dict) -> dict:
     """Execute a task locally on this PC."""
-    print(f"⚡ [Bridge] Executing local task: {action} with params: {params}")
+    safe_print(f"[*] Executing local task: {action} with params: {params}")
     try:
         if action == "create_project":
             name = params.get("name", "project")
@@ -83,13 +96,13 @@ def run_bridge_loop(server_url: str):
     heartbeat_url = f"{clean_url}/api/bridge/heartbeat"
     report_url = f"{clean_url}/api/bridge/task/report"
 
-    print("=" * 60)
-    print("🌉 DSPy Cloud-to-Local PC Bridge Active")
-    print(f"🎯 Target Server: {clean_url}")
-    print(f"💻 Local Machine: {socket.gethostname()} ({platform.system()})")
-    print(f"📁 Desktop Path : {get_desktop_dir()}")
-    print("=" * 60)
-    print("🟢 Bridge running... Press Ctrl+C to stop.")
+    safe_print("=" * 60)
+    safe_print("[BRIDGE] DSPy Cloud-to-Local PC Bridge Active")
+    safe_print(f"[*] Target Server: {clean_url}")
+    safe_print(f"[*] Local Machine: {socket.gethostname()} ({platform.system()})")
+    safe_print(f"[*] Desktop Path : {get_desktop_dir()}")
+    safe_print("=" * 60)
+    safe_print("[+] Bridge running... Press Ctrl+C to stop.")
 
     client = httpx.Client(trust_env=False, timeout=10.0)
 
@@ -98,11 +111,11 @@ def run_bridge_loop(server_url: str):
             info = gather_pc_info()
             resp = client.post(heartbeat_url, json=info)
             if resp.status_code == 200:
-                print(f"💓 Heartbeat sent ({time.strftime('%H:%M:%S')}) - PC is ONLINE on AWS")
+                safe_print(f"[+] Heartbeat sent ({time.strftime('%H:%M:%S')}) - PC is ONLINE on AWS")
                 data = resp.json()
                 pending_tasks = data.get("pending_tasks", [])
                 if pending_tasks:
-                    print(f"📥 Received {len(pending_tasks)} tasks from cloud server!")
+                    safe_print(f"[*] Received {len(pending_tasks)} tasks from cloud server!")
                     for task in pending_tasks:
                         task_id = task.get("task_id")
                         action = task.get("action")
@@ -120,13 +133,13 @@ def run_bridge_loop(server_url: str):
                                 "chat_id": chat_id,
                             },
                         )
-                        print(f"✅ Task {task_id} reported to server.")
+                        safe_print(f"[+] Task {task_id} reported to server.")
             else:
-                print(f"⚠️ Server returned status {resp.status_code}")
+                safe_print(f"[!] Server returned status {resp.status_code}")
         except httpx.ConnectError:
-            print("⏳ [Bridge] Waiting for server connection...")
+            safe_print("[!] Waiting for server connection...")
         except Exception as e:
-            print(f"⚠️ [Bridge Error]: {e}")
+            safe_print(f"[!] Bridge Error: {e}")
 
         time.sleep(POLL_INTERVAL)
 
