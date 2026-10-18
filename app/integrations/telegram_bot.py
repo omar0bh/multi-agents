@@ -41,6 +41,8 @@ class TelegramEmployeeBot:
         self.allowed_user_id = str(allowed_user_id or TELEGRAM_ALLOWED_USER_ID).strip()
         self.base_url = f"https://api.telegram.org/bot{self.token}" if self.token else ""
         self.orchestrator = Orchestrator()
+        from app.agents.discord_agent import DiscordArchitectAgent
+        self.discord_agent = DiscordArchitectAgent()
         self.last_chat_id: int | None = None
         self._running = False
         _GLOBAL_BOT = self
@@ -140,9 +142,49 @@ class TelegramEmployeeBot:
                 "• 📧 `/email`: إرسال رسائل بريد إلكتروني مع مرفقات تلقائياً عبر Gmail.\n"
                 "• 📸 إرسال الصور: حل المسائل وتحليل الصور عبر الذكاء المزدوج (Gemini + Groq) بإجابات مختصرة ومباشرة.\n"
                 "• ⚙️ `/run أمر`: تنفيذ أوامر برمجية وتثبيت مكتبات بأمان وحماية لنظامك.\n"
-                "• 🧪 `/test` أو *'دير تيست للصلاحيات'*: فحص شامل وتشغيل تجريبي فوري لجميع أدوات ومهام النظام."
+                "• 🧪 `/test` أو *'دير تيست للصلاحيات'*: فحص شامل وتشغيل تجريبي فوري لجميع أدوات ومهام النظام.\n"
+                "• 🏛️ `/discord plan`: تصميم وهندسة سيرفر ديسكورد متكامل وتطبيقه تلقائياً بعد موافقتك."
             )
             await self.send_message(chat_id, welcome)
+            return
+
+        # Command: Discord Architect (/discord, or natural query)
+        if text_stripped.startswith("/discord") or any(
+            p in lowered for p in (
+                "discord plan", "bni discord", "sawb discord", "discord server",
+                "apply discord", "tb9 discord", "طبق ديسكورد", "طبق تصميم الديسكورد"
+            )
+        ):
+            if "apply" in lowered or any(p in lowered for p in ("tb9", "taba9", "طبق", "bni", "ابني")):
+                await self.send_message(chat_id, "⚙️ **جاري بناء وتنسيق سيرفر ديسكورد بالكامل...**\n⏳ إنشاء الرتب، القنوات، الأقسام، ونشر القوانين...")
+                try:
+                    loop = asyncio.get_running_loop()
+                    res = await loop.run_in_executor(None, self.discord_agent.apply_current_plan)
+                    if res.get("ok"):
+                        await self.send_message(chat_id, res.get("summary"))
+                    else:
+                        await self.send_message(chat_id, f"❌ خطأ أثناء تطبيق التصميم: {res.get('error')}")
+                except Exception as e:
+                    logger.error("Discord apply error: %s", e)
+                    await self.send_message(chat_id, f"⚠️ حدث خطأ أثناء البناء: `{e}`")
+                return
+
+            # Otherwise, Generate or Preview Plan
+            theme = "gaming"
+            if any(k in lowered for k in ("code", "coding", "dev", "برمجة", "تطوير")):
+                theme = "coding"
+
+            await self.send_message(chat_id, f"🏛️ **جاري هندسة وتصميم سيرفر ديسكورد بنمط ({theme})...**\n⏳ تحليل القنوات والرتب المناسبة لبيئة المجتمع...")
+            try:
+                loop = asyncio.get_running_loop()
+                res = await loop.run_in_executor(None, self.discord_agent.plan, theme)
+                if res.get("ok"):
+                    await self.send_message(chat_id, res.get("preview"))
+                else:
+                    await self.send_message(chat_id, f"❌ {res.get('error')}")
+            except Exception as e:
+                logger.error("Discord plan error: %s", e)
+                await self.send_message(chat_id, f"⚠️ خطأ أثناء التخطيط: `{e}`")
             return
 
         # Command: System Self-Test & Diagnostics (/test, /diagnose, or natural query)

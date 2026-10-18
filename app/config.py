@@ -24,6 +24,9 @@ TASK_TIMEOUT_SECONDS = int(os.getenv("TASK_TIMEOUT_SECONDS", "120"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_ALLOWED_USER_ID = os.getenv("TELEGRAM_ALLOWED_USER_ID", "")
 
+# Discord Architect Bot settings
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+
 ALLOWED_LLM_MODELS = frozenset(
     {
         "openai/big-pickle",
