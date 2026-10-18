@@ -52,15 +52,19 @@ async def report_task_result(payload: dict[str, Any] = Body(...)):
     # If the task had a Telegram chat_id, notify the user immediately!
     if chat_id:
         from app.integrations.telegram_bot import notify_owner
-        action = result.get("action", "المهمة")
+        action = result.get("action") or "المهمة"
         status_msg = "✅ نجحت" if result.get("ok", True) else "❌ فشلت"
         details = result.get("detail") or result.get("output") or result.get("error") or ""
         text = (
             f"⚡ **تحديث من حاسوبك الشخصي (Local PC):**\n"
             f"📌 المهمة: `{action}` - {status_msg}\n"
         )
+        if result.get("path"):
+            text += f"\n📁 **المسار:** `{result.get('path')}`"
+        if result.get("title"):
+            text += f"\n🏷️ **العنصر:** {result.get('title')}"
         if details:
-            text += f"\nالتفاصيل:\n`{str(details)[:1500]}`"
+            text += f"\n\nالتفاصيل:\n`{str(details)[:1500]}`"
         try:
             await notify_owner(text)
         except Exception as e:

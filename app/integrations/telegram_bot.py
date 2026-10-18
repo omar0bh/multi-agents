@@ -16,6 +16,7 @@ from app.tools.email_sender import send_email
 from app.tools.file_reader import delete_path, find_file, list_directory, read_text_file
 from app.tools.gemini_audio import analyze_audio_with_gemini
 from app.tools.git_tool import git_commit_and_push, git_status
+from app.tools.image_downloader import download_web_image
 from app.tools.project_scaffold import create_project_on_desktop
 from app.tools.terminal_tool import run_safe_command
 
@@ -69,6 +70,27 @@ class TelegramEmployeeBot:
                     return resp.status_code == 200
             except Exception as exc:
                 logger.error("Failed to send telegram document: %s", exc)
+                return False
+
+    async def send_photo(self, chat_id: int, file_path: str | Path, caption: str = "") -> bool:
+        """Send a real photo from the PC to the user via Telegram."""
+        if not self.base_url:
+            return False
+
+        path_obj = Path(file_path).expanduser().resolve()
+        if not path_obj.is_file():
+            return False
+
+        url = f"{self.base_url}/sendPhoto"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                with open(path_obj, "rb") as f:
+                    files = {"photo": (path_obj.name, f)}
+                    data = {"chat_id": chat_id, "caption": caption[:1024]}
+                    resp = await client.post(url, data=data, files=files)
+                    return resp.status_code == 200
+            except Exception as exc:
+                logger.error("Failed to send telegram photo: %s", exc)
                 return False
 
     async def send_message(self, chat_id: int, text: str) -> bool:
@@ -368,6 +390,73 @@ class TelegramEmployeeBot:
             else:
                 await self.send_message(chat_id, f"❌ تعذر الـ Push:\nخطوة: {result['step']}\nتفاصيل: `{result['detail']}`")
             return
+
+        # Command: Download/Search Web Image to PC
+        # Detect requests like: "9alabli 3la tsswira dyal mr beast fl web o instaliha o 7dthali f dossier wst vedio folder"
+        image_keywords = ("tsswira", "tswira", "tasswira", "tsawer", "image", "photo", "picture", "صورة", "صور")
+        action_keywords = ("9alab", "search", "jib", "telechargi", "download", "instali", "save", "7ot", "7dtha", "dir", "نزل", "حمل", "احفظ", "جيب", "ابحث")
+
+        has_image_kw = any(k in lowered for k in image_keywords)
+        has_action_kw = any(k in lowered for k in action_keywords)
+
+        if text_stripped.startswith(("/image", "/img", "/download_img")) or (
+            has_image_kw and has_action_kw and any(w in lowered for w in ("desktop", "bureau", "folder", "dossier", "vedio", "video", "web", "fl web", "f "))
+        ):
+            folder = "vedio" if any(w in lowered for w in ("vedio", "video")) else ""
+
+            # Extract search query
+            patterns = [
+                r'(?:dyal|de|of|صورة|صوره|image of|photo de|tswira dyal|tsswira dyal)\s+([^,]+?)(?:\s+(?:fl|f|wst|on|in|au|sur|folder|dossier|web|o\s+|et\s+|and\s+|w\s+)|$)',
+                r'(?:download|instali|telechargi|حمل|نزل|جيب|ابحث عن)\s+([^,]+?)(?:\s+(?:fl|f|wst|on|in|au|sur|folder|dossier|web)|$)',
+            ]
+            query = ""
+            for p in patterns:
+                m = re.search(p, text_stripped, re.IGNORECASE)
+                if m:
+                    cand = m.group(1).strip()
+                    cand = re.sub(r'^(?:tsswira|tswira|image|photo|صورة)\s+(?:dyal|de|of)?\s*', '', cand, flags=re.IGNORECASE).strip()
+                    if cand and cand.lower() not in ('web', 'desktop', 'folder', 'dossier'):
+                        query = cand
+                        break
+            if not query:
+                parts = text_stripped.split()
+                query = parts[-1] if parts else "image"
+
+            import os
+            # If deployed in the cloud (Linux), dispatch to Local PC Bridge if available
+            if os.name != "nt":
+                if bridge_manager.is_online:
+                    task_id = bridge_manager.queue_task("download_image", {"query": query, "folder": folder}, chat_id=chat_id)
+                    await self.send_message(
+                        chat_id,
+                        f"🌉 **جاري إرسال المهمة إلى حاسوبك الشخصي المتصل...**\n"
+                        f"🔍 جاري البحث في الويب عن صورة `{query}` وتحميلها وحفظها داخل مجلد `{folder or 'سطح المكتب'}` على حاسوبك (Task #{task_id})."
+                    )
+                    return
+                else:
+                    task_id = bridge_manager.queue_task("download_image", {"query": query, "folder": folder}, chat_id=chat_id)
+                    await self.send_message(
+                        chat_id,
+                        f"📥 **حاسوبك الشخصي مغلق حالياً (Offline).**\n\n"
+                        f"تم حفظ أمر البحث وتحميل صورة `{query}` داخل مجلد `{folder or 'سطح المكتب'}` في طابور المهام (Task #{task_id}).\n"
+                        f"⚡ بمجرد تشغيل حاسوبك، سيقوم الجسر بتحميلها فوراً وإشعارك هنا!"
+                    )
+                    return
+
+            # Running locally on PC
+            await self.send_message(chat_id, f"🔍 جاري البحث في الويب عن صورة `{query}` وتحميلها على حاسوبك...")
+            dl_res = download_web_image(query, folder_name=folder)
+            if dl_res.get("ok"):
+                saved_path = Path(dl_res.get("path"))
+                caption = f"✅ تم تحميل الصورة بنجاح وحفظها في:\n`{saved_path}`"
+                # Send photo preview to Telegram chat
+                sent = await self.send_photo(chat_id, saved_path, caption=caption)
+                if not sent:
+                    await self.send_document(chat_id, saved_path, caption=caption)
+                return
+            else:
+                await self.send_message(chat_id, f"❌ حدث خطأ أثناء تحميل الصورة: {dl_res.get('error')}")
+                return
 
         # Command: Create Project / Website / Folder / File on Desktop
         is_create_intent = (

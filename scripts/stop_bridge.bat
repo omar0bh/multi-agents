@@ -1,7 +1,6 @@
 @echo off
 title Stop DSPy Local PC Bridge
 echo Stopping any running DSPy Bridge background processes...
-taskkill /F /FI "WINDOWTITLE eq DSPy Local PC Bridge*" >nul 2>&1
-wmic process where "commandline like '%%local_bridge.py%%'" call terminate >nul 2>&1
-echo Done! Bridge stopped.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name LIKE 'python%%%%'\" | Where-Object CommandLine -match 'local_bridge\.py' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Host ('Stopped Bridge process: ' + $_.ProcessId) }"
+echo Done! Bridge stopped cleanly.
 pause

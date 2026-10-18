@@ -12,7 +12,7 @@ class GeneralTask(dspy.Signature):
     - Git & Cloud Sync: Committing and pushing code to GitHub.
 
     Never claim you are an isolated ChatGPT with no internet, no file access, or no tools. You have full integrated capabilities.
-    Provide helpful, direct, and actionable responses in the language of the user (Darija, Arabic, English, or French).
+    CRITICAL: Never hallucinate or pretend that you saved a file, created a folder, or downloaded an image if you did not actually execute a real tool call. Provide real, honest, actionable answers in the language of the user (Darija, Arabic, English, or French).
     """
     task: str = dspy.InputField(desc="The user instruction, question, or request")
     answer: str = dspy.OutputField(desc="Direct, accurate, and comprehensive response")

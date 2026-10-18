@@ -30,6 +30,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 import httpx
 
 from app.tools.file_reader import delete_path, find_file, read_text_file
+from app.tools.image_downloader import download_web_image
 from app.tools.project_scaffold import create_project_on_desktop, get_desktop_dir
 from app.tools.terminal_tool import run_safe_command
 
@@ -76,6 +77,12 @@ def execute_local_task(action: str, params: dict) -> dict:
         elif action == "delete_path":
             path = params.get("path", "")
             return delete_path(path)
+
+        elif action == "download_image":
+            query = params.get("query", "")
+            folder = params.get("folder", "vedio")
+            filename = params.get("filename", "")
+            return download_web_image(query, folder_name=folder, filename=filename)
 
         elif action == "find_file":
             query = params.get("query", "")
@@ -145,8 +152,13 @@ def run_bridge_loop(server_url: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="DSPy Cloud-to-Local Bridge")
-    parser.add_argument("--server", default=DEFAULT_SERVER_URL, help="AWS Server base URL")
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="DSPy Cloud-to-Local Bridge")
+        parser.add_argument("--server", default=DEFAULT_SERVER_URL, help="AWS Server base URL")
+        args = parser.parse_args()
 
-    run_bridge_loop(args.server)
+        run_bridge_loop(args.server)
+    except Exception as e:
+        import traceback
+        with open("C:\\dspy-multi-agents\\bridge_crash.log", "w", encoding="utf-8") as f:
+            f.write(traceback.format_exc())
