@@ -79,7 +79,7 @@ class TelegramEmployeeBot:
         async with httpx.AsyncClient(timeout=30.0) as client:
             for chunk in chunks:
                 try:
-                    await client.post(
+                    resp = await client.post(
                         url,
                         json={
                             "chat_id": chat_id,
@@ -87,15 +87,23 @@ class TelegramEmployeeBot:
                             "parse_mode": "Markdown",
                         },
                     )
-                except Exception:
-                    # Fallback to plain text if markdown formatting fails
-                    try:
+                    if resp.status_code != 200:
+                        # Fallback to plain text if Telegram rejects markdown entities (like LaTeX/math)
+                        logger.warning("Telegram Markdown rejected (%s). Resending as plain text.", resp.status_code)
                         await client.post(
                             url,
                             json={"chat_id": chat_id, "text": chunk},
                         )
-                    except Exception as exc:
-                        logger.error("Failed to send telegram message: %s", exc)
+                except Exception as exc:
+                    # Fallback to plain text on exception
+                    try:
+                        logger.warning("Telegram send exception (%s). Retrying as plain text.", exc)
+                        await client.post(
+                            url,
+                            json={"chat_id": chat_id, "text": chunk},
+                        )
+                    except Exception as err:
+                        logger.error("Failed to send telegram message: %s", err)
                         return False
         return True
 
@@ -431,19 +439,21 @@ class TelegramEmployeeBot:
             result_data = res.get("result", {})
 
             # Format the output nicely
-            lines = [f"🎯 **الوكيل المنفذ:** `{workflow}`\n"]
-            if isinstance(result_data, dict):
-                for k, v in result_data.items():
-                    if isinstance(v, (str, int, float, bool)):
-                        lines.append(f"**{k.capitalize()}:**\n{v}\n")
-                    elif isinstance(v, list) and v and isinstance(v[0], dict):
-                        lines.append(f"**{k.capitalize()}:**")
-                        for item in v[:5]:
-                            lines.append(f"- [{item.get('title', 'Link')}]({item.get('url', '')})")
+            if isinstance(result_data, dict) and "answer" in result_data and len(result_data) == 1:
+                reply_text = f"💡 **الإجابة:**\n\n{result_data['answer']}"
             else:
-                lines.append(str(result_data))
-
-            reply_text = "\n".join(lines)
+                lines = [f"🎯 **الوكيل المنفذ:** `{workflow}`\n"]
+                if isinstance(result_data, dict):
+                    for k, v in result_data.items():
+                        if isinstance(v, (str, int, float, bool)):
+                            lines.append(f"**{k.capitalize()}:**\n{v}\n")
+                        elif isinstance(v, list) and v and isinstance(v[0], dict):
+                            lines.append(f"**{k.capitalize()}:**")
+                            for item in v[:5]:
+                                lines.append(f"- [{item.get('title', 'Link')}]({item.get('url', '')})")
+                else:
+                    lines.append(str(result_data))
+                reply_text = "\n".join(lines)
             await self.send_message(chat_id, reply_text)
 
         except Exception as exc:
