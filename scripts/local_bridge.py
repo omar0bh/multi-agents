@@ -13,6 +13,12 @@ import sys
 import time
 from pathlib import Path
 
+# Force UTF-8 on Windows consoles to support Arabic paths and emojis cleanly
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -20,8 +26,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import httpx
 
-from app.tools.file_reader import delete_path, find_file, get_desktop_dir, read_text_file
-from app.tools.project_scaffold import create_project_on_desktop
+from app.tools.file_reader import delete_path, find_file, read_text_file
+from app.tools.project_scaffold import create_project_on_desktop, get_desktop_dir
 from app.tools.terminal_tool import run_safe_command
 
 DEFAULT_SERVER_URL = os.getenv("AWS_SERVER_URL", "http://127.0.0.1:8000")

@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 > nul
+set PYTHONIOENCODING=utf-8
 title DSPy Local PC Bridge
 echo ========================================================
 echo   Starting DSPy Cloud-to-Local PC Bridge...

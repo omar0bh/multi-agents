@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from app.tools.project_scaffold import get_desktop_dir
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
