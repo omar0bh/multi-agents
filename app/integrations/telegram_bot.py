@@ -116,6 +116,7 @@ class TelegramEmployeeBot:
             return
 
         text_stripped = text.strip()
+        lowered = text_stripped.lower()
 
         # Command: Start / Help
         if text_stripped in ("/start", "/help"):
