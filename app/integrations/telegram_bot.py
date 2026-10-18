@@ -14,6 +14,7 @@ from app.config import TELEGRAM_ALLOWED_USER_ID, TELEGRAM_BOT_TOKEN
 from app.orchestration.manager import Orchestrator
 from app.tools.email_sender import send_email
 from app.tools.file_reader import delete_path, find_file, list_directory, read_text_file
+from app.tools.gemini_audio import analyze_audio_with_gemini
 from app.tools.git_tool import git_commit_and_push, git_status
 from app.tools.project_scaffold import create_project_on_desktop
 from app.tools.terminal_tool import run_safe_command
@@ -263,19 +264,37 @@ class TelegramEmployeeBot:
                 await self.send_message(chat_id, f"❌ تعذر الـ Push:\nخطوة: {result['step']}\nتفاصيل: `{result['detail']}`")
             return
 
-        # Command: Create Project / Website on Desktop
-        if text_stripped.startswith("/create") or any(
-            p in lowered for p in ("create project", "dir machro3", "cree projet", "sawb site", "creer site", "create website", "create site", "sawb li site")
-        ):
+        # Command: Create Project / Website / Folder / File on Desktop
+        is_create_intent = (
+            text_stripped.startswith(("/create", "/new", "/make"))
+            or (
+                any(p in lowered for p in ("create", "dir ", "sawb ", "creer ", "créer ", "make "))
+                and any(k in lowered for k in ("file", "folder", "dossier", "project", "machro3", "site", "website", "desktop", "bureau", "omarchil"))
+            )
+            or any(
+                p in lowered for p in (
+                    "create project", "create file", "create folder", "dir machro3", "dir file", "dir dossier",
+                    "cree projet", "cree fichier", "cree dossier", "sawb site", "sawb dossier", "sawb file",
+                    "creer site", "create website", "create site", "sawb li site", "sawb li file", "sawb li dossier"
+                )
+            )
+        )
+
+        if is_create_intent:
             name = "my_new_project"
             parts = text_stripped.split()
             if text_stripped.startswith("/create") and len(parts) > 1:
                 name = parts[1]
             else:
                 for idx, part in enumerate(parts):
-                    if part.lower() in ("samih", "smih", "name", "project", "machro3") and idx + 1 < len(parts):
-                        name = parts[idx + 1].strip(",.!?\"'")
-                        break
+                    clean_part = part.lower().strip(",.!?\"':;")
+                    if clean_part in ("samih", "smih", "name", "named", "project", "machro3", "file", "folder", "dossier") and idx + 1 < len(parts):
+                        cand = parts[idx + 1].strip(",.!?\"':;")
+                        if cand.lower() not in ("on", "in", "f", "fl", "desktop", "bureau"):
+                            name = cand
+                            break
+                if name in ("my_new_project", "on", "in", "desktop", "bureau", "file", "folder"):
+                    name = parts[-1].strip(",.!?\"':;")
 
             # If deployed in the cloud (Linux), dispatch to Local PC Bridge if available
             import os
@@ -484,6 +503,59 @@ class TelegramEmployeeBot:
             logger.exception("Error processing photo: %s", exc)
             await self.send_message(chat_id, f"❌ حدث خطأ أثناء تحليل وتدقيق الصورة: {exc}")
 
+    async def handle_user_audio(self, chat_id: int, file_id: str, mime_type: str, user_id: int):
+        """Process voice notes and audio messages directly with Gemini Audio."""
+        if self.allowed_user_id and not self.allowed_user_id.isdigit():
+            self.allowed_user_id = str(user_id)
+        elif not self.allowed_user_id:
+            self.allowed_user_id = str(user_id)
+        elif str(user_id) != self.allowed_user_id:
+            await self.send_message(chat_id, f"⚠️ عذراً، هذا البوت مخصص للاستخدام الشخصي فقط. معرفك: {user_id}")
+            return
+
+        self.last_chat_id = chat_id
+        await self.send_message(
+            chat_id,
+            "🎙️ **استلمت رسالتك الصوتية!**\n"
+            "⏳ جاري الاستماع إليها وتحليلها والإجابة عليها بواسطة **Gemini Flash**..."
+        )
+
+        try:
+            # 1. Download audio file from Telegram
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                info_resp = await client.get(f"{self.base_url}/getFile", params={"file_id": file_id})
+                if info_resp.status_code != 200:
+                    await self.send_message(chat_id, "❌ تعذر جلب مسار التسجيل الصوتي من سيرفر تيليجرام.")
+                    return
+                file_path = info_resp.json().get("result", {}).get("file_path")
+                file_url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+                audio_resp = await client.get(file_url)
+                if audio_resp.status_code != 200:
+                    await self.send_message(chat_id, "❌ تعذر تحميل محتوى التسجيل الصوتي.")
+                    return
+                audio_bytes = audio_resp.content
+
+            # 2. Analyze with Gemini Audio
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(
+                None,
+                analyze_audio_with_gemini,
+                audio_bytes,
+                "Listen carefully to this audio/voice note. Transcribe what the user said, and answer their question or request directly, clearly, and helpfully in the exact same language they used (Darija, Arabic, English, or French).",
+                mime_type,
+            )
+
+            if not res.get("ok"):
+                await self.send_message(chat_id, f"❌ خطأ أثناء معالجة الصوت: {res.get('error')}")
+                return
+
+            reply = f"🎙️ **رد المساعد الذكي:**\n\n{res.get('text')}"
+            await self.send_message(chat_id, reply)
+
+        except Exception as exc:
+            logger.exception("Error processing audio: %s", exc)
+            await self.send_message(chat_id, f"❌ حدث خطأ أثناء معالجة التسجيل الصوتي: {exc}")
+
     async def start_polling(self):
         if not self.is_configured():
             logger.info("Telegram Bot Token is not set. Telegram integration disabled.")
@@ -514,6 +586,13 @@ class TelegramEmployeeBot:
                                 file_id = message["photo"][-1]["file_id"]
                                 caption = message.get("caption") or "قم بحل أو تحليل ما في هذه الصورة بالتفصيل."
                                 asyncio.create_task(self.handle_user_photo(chat_id, file_id, caption, user_id))
+                            elif message and ("voice" in message or "audio" in message):
+                                chat_id = message["chat"]["id"]
+                                user_id = message["from"]["id"]
+                                voice_obj = message.get("voice") or message.get("audio")
+                                file_id = voice_obj.get("file_id")
+                                mime_type = voice_obj.get("mime_type", "audio/ogg")
+                                asyncio.create_task(self.handle_user_audio(chat_id, file_id, mime_type, user_id))
                     elif resp.status_code in (401, 404):
                         logger.error("Invalid Telegram Bot Token. Stopping bot.")
                         break
