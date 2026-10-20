@@ -118,7 +118,7 @@ async def report_task_result(
                 text += f"\n\nالتفاصيل:\n`{str(details)[:1500]}`"
 
         try:
-            await notify_owner(text)
+            await notify_owner(text, chat_id=chat_id)
         except Exception as e:
             logger.warning("Could not send Telegram bridge notification: %s", e)
 

@@ -26,12 +26,45 @@ logger = logging.getLogger(__name__)
 _GLOBAL_BOT: "TelegramEmployeeBot | None" = None
 
 
-async def notify_owner(message: str) -> bool:
+async def notify_owner(message: str, chat_id: int | None = None) -> bool:
     """Send a proactive notification to the owner's Telegram (e.g. when a PC task finishes)."""
     global _GLOBAL_BOT
-    if _GLOBAL_BOT and _GLOBAL_BOT.last_chat_id:
-        return await _GLOBAL_BOT.send_message(_GLOBAL_BOT.last_chat_id, message)
-    return False
+    target_chat = chat_id
+    if not target_chat and _GLOBAL_BOT and _GLOBAL_BOT.last_chat_id:
+        target_chat = _GLOBAL_BOT.last_chat_id
+    if not target_chat and TELEGRAM_ALLOWED_USER_ID and str(TELEGRAM_ALLOWED_USER_ID).isdigit():
+        target_chat = int(TELEGRAM_ALLOWED_USER_ID)
+
+    if not target_chat or not TELEGRAM_BOT_TOKEN:
+        logger.warning("notify_owner: target_chat=%s or token missing", target_chat)
+        return False
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    chunks = [message[i : i + 4000] for i in range(0, len(message), 4000)]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for chunk in chunks:
+            try:
+                resp = await client.post(
+                    url,
+                    json={
+                        "chat_id": target_chat,
+                        "text": chunk,
+                        "parse_mode": "Markdown",
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.warning("Telegram Markdown rejected (%s). Resending plain.", resp.status_code)
+                    await client.post(
+                        url,
+                        json={"chat_id": target_chat, "text": chunk},
+                    )
+            except Exception as e:
+                logger.error("notify_owner send failed: %s", e)
+                try:
+                    await client.post(url, json={"chat_id": target_chat, "text": chunk})
+                except Exception:
+                    return False
+    return True
 
 
 class TelegramEmployeeBot:
@@ -148,6 +181,7 @@ class TelegramEmployeeBot:
             )
             return
 
+        self.last_chat_id = chat_id
         text_stripped = text.strip()
         lowered = text_stripped.lower()
 
