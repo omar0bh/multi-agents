@@ -27,6 +27,10 @@ TELEGRAM_ALLOWED_USER_ID = os.getenv("TELEGRAM_ALLOWED_USER_ID", "")
 # Discord Architect Bot settings
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
+# Cloud-to-Local Bridge security token
+# Set the same value on both AWS (.env) and local PC (.env) to authenticate bridge requests
+BRIDGE_SECRET = os.getenv("BRIDGE_SECRET", "")
+
 ALLOWED_LLM_MODELS = frozenset(
     {
         "openai/big-pickle",
@@ -39,4 +43,3 @@ ALLOWED_LLM_MODELS = frozenset(
         "groq/mixtral-8x7b-32768",
     }
 )
-

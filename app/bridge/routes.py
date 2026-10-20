@@ -3,11 +3,22 @@ from typing import Any
 from fastapi import APIRouter, Body, Header, HTTPException
 
 from app.bridge.manager import bridge_manager
-from app.config import TELEGRAM_ALLOWED_USER_ID
+from app.config import BRIDGE_SECRET
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/bridge", tags=["bridge"])
+
+
+def _verify_bridge_secret(x_bridge_secret: str | None) -> None:
+    """Reject requests that don't carry the correct BRIDGE_SECRET header.
+    If BRIDGE_SECRET is not configured on the server, auth is disabled (dev mode).
+    """
+    if not BRIDGE_SECRET:
+        return  # auth disabled — dev/local mode
+    if x_bridge_secret != BRIDGE_SECRET:
+        logger.warning("Bridge request rejected: invalid or missing X-Bridge-Secret")
+        raise HTTPException(status_code=401, detail="Invalid bridge secret token.")
 
 
 @router.get("/status")
@@ -20,8 +31,13 @@ def get_bridge_status():
 
 
 @router.post("/heartbeat")
-def pc_heartbeat(payload: dict[str, Any] = Body(...)):
+def pc_heartbeat(
+    payload: dict[str, Any] = Body(...),
+    x_bridge_secret: str | None = Header(default=None),
+):
     """Receives periodic heartbeat ping from the local PC daemon script and returns pending tasks."""
+    _verify_bridge_secret(x_bridge_secret)
+
     info = {
         "hostname": payload.get("hostname", "LocalPC"),
         "os": payload.get("os", "Windows"),
@@ -38,8 +54,13 @@ def pc_heartbeat(payload: dict[str, Any] = Body(...)):
 
 
 @router.post("/task/report")
-async def report_task_result(payload: dict[str, Any] = Body(...)):
+async def report_task_result(
+    payload: dict[str, Any] = Body(...),
+    x_bridge_secret: str | None = Header(default=None),
+):
     """Called by the local PC bridge daemon after completing an assigned task."""
+    _verify_bridge_secret(x_bridge_secret)
+
     task_id = payload.get("task_id")
     result = payload.get("result", {})
     chat_id = payload.get("chat_id")

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -163,7 +164,9 @@ class TelegramEmployeeBot:
                 "• 🚀 `/status` و `/push`: فحص ومزامنة كود المشروع مع Git ومستودعك السحابي.\n"
                 "• 📧 `/email`: إرسال رسائل بريد إلكتروني مع مرفقات تلقائياً عبر Gmail.\n"
                 "• 📸 إرسال الصور: حل المسائل وتحليل الصور عبر الذكاء المزدوج (Gemini + Groq) بإجابات مختصرة ومباشرة.\n"
-                "• ⚙️ `/run أمر`: تنفيذ أوامر برمجية وتثبيت مكتبات بأمان وحماية لنظامك.\n"
+                "• ⚙️ `/run أمر`: تنفيذ أوامر على حاسوبك الشخصي بأمان عبر الجسر السحابي.\n"
+                "• 📋 `/tasks`: عرض آخر 10 مهام في الطابور (معلقة، منجزة، ملغاة).\n"
+                "• ❌ `/cancel <task_id>`: إلغاء مهمة معلقة قبل وصولها لحاسوبك.\n"
                 "• 🧪 `/test` أو *'دير تيست للصلاحيات'*: فحص شامل وتشغيل تجريبي فوري لجميع أدوات ومهام النظام.\n"
                 "• 🏛️ `/discord plan`: تصميم وهندسة سيرفر ديسكورد متكامل وتطبيقه تلقائياً بعد موافقتك."
             )
@@ -260,6 +263,38 @@ class TelegramEmployeeBot:
             except Exception as e:
                 logger.error("Diagnostic error: %s", e)
                 await self.send_message(chat_id, f"⚠️ خطأ أثناء الفحص الشامل: `{e}`")
+            return
+
+        # Command: Task Queue Viewer (/tasks)
+        if text_stripped.startswith("/tasks") or any(
+            p in lowered for p in ("chof tasks", "chof lmhmat", "l tasks", "show tasks", "liste tasks")
+        ):
+            tasks = bridge_manager.list_tasks(limit=10)
+            if not tasks:
+                await self.send_message(chat_id, "📋 **طابور المهام فارغ حالياً.**\nما كاين تا task معلقة.")
+                return
+            status_icons = {"pending": "⏳", "dispatched": "🔄", "completed": "✅", "cancelled": "❌"}
+            lines = ["📋 **آخر 10 مهام في الطابور:**\n"]
+            for t in tasks:
+                icon = status_icons.get(t["status"], "❓")
+                queued_ago = int(time.time() - t["queued_at"]) if t.get("queued_at") else 0
+                lines.append(f"{icon} `{t['task_id']}` — **{t['action']}** ({t['status']}) منذ {queued_ago}ث")
+            lines.append("\n💡 *لإلغاء مهمة معلقة:* `/cancel <task_id>`")
+            await self.send_message(chat_id, "\n".join(lines))
+            return
+
+        # Command: Cancel a pending task (/cancel <task_id>)
+        if text_stripped.startswith("/cancel"):
+            parts = text_stripped.split()
+            if len(parts) < 2:
+                await self.send_message(chat_id, "⚠️ يرجى تحديد الـ task_id. مثال:\n`/cancel a1b2c3d4`\n\nاستخدم `/tasks` لعرض قائمة المهام.")
+                return
+            target_id = parts[1].strip()
+            cancelled = bridge_manager.cancel_task(target_id)
+            if cancelled:
+                await self.send_message(chat_id, f"✅ **تم إلغاء المهمة `{target_id}` بنجاح!**\nلن تُنفَّذ على حاسوبك.")
+            else:
+                await self.send_message(chat_id, f"❌ لم يتم العثور على مهمة معلقة بالـ ID: `{target_id}`\nربما تم تنفيذها أو إلغاؤها مسبقاً. جرب `/tasks` لعرض الحالة.")
             return
 
         # Command: Bridge / PC Status (/bridge, /pc, or natural query)
@@ -624,7 +659,9 @@ class TelegramEmployeeBot:
                     await self.send_message(chat_id, f"❌ **تعذر الحذف:** {del_res.get('error')}")
                 return
 
-        # Command: Run Safe Terminal Command (/cmd, /terminal, or natural install intent)
+        # Command: Run Safe Terminal Command (/cmd, /terminal, /run)
+        # SECURITY: On cloud (Linux), always routes through the local PC bridge.
+        # Direct execution on the AWS server is intentionally disabled.
         if text_stripped.startswith(("/cmd", "/terminal", "/run")) or any(
             text_stripped.lower().startswith(p) for p in ("install ", "instali ", "npm ", "pip ", "winget ", "git clone")
         ):
@@ -636,6 +673,28 @@ class TelegramEmployeeBot:
             if not cmd:
                 cmd = text_stripped
 
+            import os as _os
+            if _os.name != "nt":
+                # Running on cloud Linux — always delegate to Local PC bridge
+                if bridge_manager.is_online:
+                    task_id = bridge_manager.queue_task("run_command", {"cmd": cmd}, chat_id=chat_id)
+                    await self.send_message(
+                        chat_id,
+                        f"🌉 **جاري إرسال الأمر إلى حاسوبك الشخصي عبر الجسر...**\n"
+                        f"⚙️ `{cmd}`\n"
+                        f"📌 Task ID: `{task_id}` — ستصلك النتيجة فور الانتهاء."
+                    )
+                else:
+                    task_id = bridge_manager.queue_task("run_command", {"cmd": cmd}, chat_id=chat_id)
+                    await self.send_message(
+                        chat_id,
+                        f"📥 **حاسوبك غير متصل حالياً.**\n"
+                        f"تم حفظ الأمر `{cmd}` في الطابور (Task `{task_id}`).\n"
+                        f"⚡ سيُنفَّذ تلقائياً فور تشغيل الجسر!"
+                    )
+                return
+
+            # Running directly on local Windows PC
             await self.send_message(chat_id, f"⚙️ **جاري تنفيذ الأمر في التيرمنال بأمان:**\n`{cmd}`")
             exec_res = run_safe_command(cmd)
             if exec_res.get("blocked"):

@@ -57,3 +57,13 @@ def git_commit_and_push(message: str, branch: str = "main") -> dict:
         "step": "git push",
         "detail": push_res["stdout"] or push_res["stderr"],
     }
+
+
+def git_pull(branch: str = "main") -> dict:
+    """Pull latest changes from remote origin."""
+    pull_res = run_git(["pull", "origin", branch])
+    return {
+        "ok": pull_res["ok"],
+        "step": "git pull",
+        "detail": pull_res["stdout"] or pull_res["stderr"],
+    }
