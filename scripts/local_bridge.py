@@ -55,7 +55,11 @@ def _auth_headers() -> dict:
 
 
 def gather_pc_info() -> dict:
-    desktop = get_desktop_dir()
+    from app.tools.user_folders import get_known_user_folders
+    try:
+        desktop = get_known_user_folders().get("desktop", get_desktop_dir())
+    except Exception:
+        desktop = get_desktop_dir()
     return {
         "hostname": socket.gethostname(),
         "os": f"{platform.system()} {platform.release()}",
@@ -108,6 +112,59 @@ def execute_local_task(action: str, params: dict) -> dict:
                 preview = read_text_file(str(found), max_chars=1000)
                 return {"ok": True, "path": str(found), "preview": preview}
             return {"ok": False, "error": f"File not found: {query}"}
+
+        elif action in ("list_dir", "ls"):
+            from app.tools.file_reader import list_directory
+            from app.tools.user_folders import get_known_user_folders
+            folder = (params.get("folder") or "").strip()
+            parent = (params.get("parent") or "").strip().lower()
+            known = get_known_user_folders()
+
+            target_path = None
+            if folder:
+                p = Path(folder).expanduser()
+                if p.is_dir():
+                    target_path = p
+                elif folder.lower() in known:
+                    target_path = known[folder.lower()]
+                else:
+                    bases = []
+                    if parent and parent in known:
+                        bases.append(known[parent])
+                    bases.extend([
+                        known["desktop"],
+                        known["documents"],
+                        known["downloads"],
+                        known["pictures"],
+                        known["videos"],
+                        known["music"],
+                        Path.home(),
+                    ])
+                    for base in bases:
+                        cand = base / folder
+                        if cand.is_dir():
+                            target_path = cand
+                            break
+            elif parent and parent in known:
+                target_path = known[parent]
+            else:
+                target_path = known["desktop"]
+
+            if target_path and target_path.is_dir():
+                items = list_directory(str(target_path))
+                return {
+                    "ok": True,
+                    "path": str(target_path),
+                    "folder_name": target_path.name,
+                    "items": items,
+                    "count": len(items),
+                    "detail": "\n".join(items) if items else "المجلد فارغ.",
+                }
+            return {
+                "ok": False,
+                "error": f"المجلد `{folder or parent}` غير موجود على حاسوبك الشخصي.",
+                "desktop": str(known["desktop"]),
+            }
 
         else:
             return {"ok": False, "error": f"Unknown action: {action}"}

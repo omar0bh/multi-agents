@@ -75,17 +75,48 @@ async def report_task_result(
         from app.integrations.telegram_bot import notify_owner
         action = result.get("action") or "المهمة"
         status_msg = "✅ نجحت" if result.get("ok", True) else "❌ فشلت"
-        details = result.get("detail") or result.get("output") or result.get("error") or ""
-        text = (
-            f"⚡ **تحديث من حاسوبك الشخصي (Local PC):**\n"
-            f"📌 المهمة: `{action}` - {status_msg}\n"
-        )
-        if result.get("path"):
-            text += f"\n📁 **المسار:** `{result.get('path')}`"
-        if result.get("title"):
-            text += f"\n🏷️ **العنصر:** {result.get('title')}"
-        if details:
-            text += f"\n\nالتفاصيل:\n`{str(details)[:1500]}`"
+
+        if action in ("list_dir", "ls"):
+            path = result.get("path", "")
+            items = result.get("items", [])
+            folder_name = result.get("folder_name") or "المجلد"
+            if result.get("ok"):
+                if items:
+                    text = (
+                        f"📂 **محتويات المجلد `{folder_name}` على حاسوبك الشخصي:**\n"
+                        f"📁 `{path}`\n\n"
+                        + "\n".join(items)
+                    )
+                else:
+                    text = f"📂 **المجلد `{folder_name}` على حاسوبك الشخصي موجود لكنه فارغ (0 عناصر).**\n📁 `{path}`"
+            else:
+                err = result.get("error") or "تعذر العثور على المجلد على حاسوبك."
+                text = f"❌ {err}"
+
+        elif action == "find_file":
+            path = result.get("path", "")
+            preview = result.get("preview", "")
+            if result.get("ok"):
+                text = f"📄 **تم العثور على الملف على حاسوبك الشخصي:**\n📁 `{path}`"
+                if preview:
+                    text += f"\n\n👀 **معاينة:**\n```\n{preview[:800]}\n```"
+            else:
+                err = result.get("error") or "لم يتم العثور على الملف."
+                text = f"❌ {err}"
+
+        else:
+            details = result.get("detail") or result.get("output") or result.get("error") or ""
+            text = (
+                f"⚡ **تحديث من حاسوبك الشخصي (Local PC):**\n"
+                f"📌 المهمة: `{action}` - {status_msg}\n"
+            )
+            if result.get("path"):
+                text += f"\n📁 **المسار:** `{result.get('path')}`"
+            if result.get("title"):
+                text += f"\n🏷️ **العنصر:** {result.get('title')}"
+            if details:
+                text += f"\n\nالتفاصيل:\n`{str(details)[:1500]}`"
+
         try:
             await notify_owner(text)
         except Exception as e:

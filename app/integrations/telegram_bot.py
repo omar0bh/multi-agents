@@ -351,6 +351,21 @@ class TelegramEmployeeBot:
         # Understands: "chof folder X", "what inside X", "go to folder X", "list X", etc.
         is_ls_intent = text_stripped.startswith(("/ls", "/dir"))
         ls_folder_query = ""
+        parent_loc = ""
+
+        # Detect container category (Desktop, Downloads, Documents, etc.)
+        if any(w in lowered for w in ("desktop", "bureau", "سطح المكتب")):
+            parent_loc = "desktop"
+        elif any(w in lowered for w in ("download", "downloads", "telechargement", "téléchargement", "التحميلات", "التنزيلات")):
+            parent_loc = "downloads"
+        elif any(w in lowered for w in ("document", "documents", "المستندات")):
+            parent_loc = "documents"
+        elif any(w in lowered for w in ("picture", "pictures", "image", "images", "photo", "photos", "الصور")):
+            parent_loc = "pictures"
+        elif any(w in lowered for w in ("video", "videos", "vedio", "vedios", "الفيديو", "فيديو")):
+            parent_loc = "videos"
+        elif any(w in lowered for w in ("music", "audio", "الموسيقى", "اموسيقى")):
+            parent_loc = "music"
 
         if is_ls_intent:
             ls_folder_query = text_stripped.replace("/ls", "").replace("/dir", "").strip()
@@ -359,25 +374,29 @@ class TelegramEmployeeBot:
             "list folder", "list directory", "show folder", "show me folder",
             "wach kayn", "chno kayn", "chno fi", "chno f ",
             "contents of", "inside the folder", "go to folder", "go to this folder",
-            "told me what inside", "tell me what inside",
+            "told me what inside", "tell me what inside", "what is inside",
         )):
             is_ls_intent = True
             import re as _re
-            name_patterns = [
-                r'(?:folder|dossier|directory)\s+(?:named|called|smito)?\s*([A-Za-z0-9_\-\. ]+)',
-                r'(?:go to|open|chof)\s+(?:this\s+)?(?:folder\s+)?([A-Za-z0-9_\-\. ]+)',
-                r'(?:inside|dakhel|fi)\s+([A-Za-z0-9_\-\. ]+)\s*(?:folder|dossier)?',
+
+            # Non-greedy extraction stopping before location connectors or prompt trailers
+            folder_patterns = [
+                r'(?:folder|dossier|directory|مجلد|دوسي)\s+(?:named|called|smito|ismuhu)?\s*["\'«]?([^"\'\n\r,;?!]+?)["\'»]?(?:\s+(?:inside|in|on|fl|f|sur|wst|wast|dakhel|tolde|told|tell|show|what|chno|wach|and|3afak|please|svp)|\s*$)',
+                r'(?:go to|open|chof|dkhoul l|adkhol)\s+(?:this\s+)?(?:folder\s+|dossier\s+)?["\'«]?([^"\'\n\r,;?!]+?)["\'»]?(?:\s+(?:inside|in|on|fl|f|sur|wst|wast|dakhel|tolde|told|tell|show|what|chno|wach|and|3afak|please|svp)|\s*$)',
+                r'(?:inside|dakhel|fi|wst)\s+(?:folder\s+|dossier\s+)?["\'«]?([^"\'\n\r,;?!]+?)["\'»]?(?:\s+(?:folder|dossier|directory|tolde|told|tell|show|what)|\s*$)',
             ]
-            for pat in name_patterns:
+            for pat in folder_patterns:
                 m = _re.search(pat, text_stripped, _re.IGNORECASE)
                 if m:
-                    cand = m.group(1).strip().rstrip("., !?")
-                    if len(cand) > 1 and cand.lower() not in (
-                        "folder", "dossier", "directory", "me", "it", "this", "the", "my"
+                    cand = m.group(1).strip().strip("\"'., !?")
+                    if cand and cand.lower() not in (
+                        "folder", "dossier", "directory", "me", "it", "this", "the", "my",
+                        "desktop", "downloads", "documents", "pictures", "videos", "music"
                     ):
                         ls_folder_query = cand
                         break
-            if not ls_folder_query:
+
+            if not ls_folder_query and not parent_loc:
                 skip = {"folder","dossier","this","the","inside","what","chof","go","to","and",
                         "told","tell","show","list","me","it","my","is"}
                 words = [w for w in text_stripped.split() if len(w) > 2 and w.lower() not in skip]
@@ -385,59 +404,85 @@ class TelegramEmployeeBot:
                     ls_folder_query = words[-1]
 
         if is_ls_intent:
-            from pathlib import Path as _Path
-            from app.tools.user_folders import get_known_user_folders as _get_folders
-            # Use registry-backed resolver for correct paths
-            _known = _get_folders()
-            search_bases = [
-                _known["desktop"],
-                _known["documents"],
-                _known["downloads"],
-                _known["pictures"],
-                _known["videos"],
-                _known["music"],
-                _Path.home(),
-            ]
-
-            folder_to_list = None
-            if ls_folder_query:
-                # 1. Direct absolute path?
-                direct = _Path(ls_folder_query).expanduser()
-                if direct.is_dir():
-                    folder_to_list = direct
-                # 2. Known folder name (e.g. "Desktop", "Downloads")?
-                elif ls_folder_query.lower() in _known:
-                    folder_to_list = _known[ls_folder_query.lower()]
-                # 3. Subfolder inside known folders
+            import os as _os
+            if _os.name != "nt":
+                # Running on Cloud Linux (AWS) — must query the user's Local PC bridge!
+                if bridge_manager.is_online:
+                    target_display = ls_folder_query or parent_loc or "Desktop"
+                    task_id = bridge_manager.queue_task(
+                        "list_dir",
+                        {"folder": ls_folder_query, "parent": parent_loc},
+                        chat_id=chat_id,
+                    )
+                    await self.send_message(
+                        chat_id,
+                        f"🌉 **جاري استعراض محتويات المجلد من حاسوبك الشخصي عبر الجسر...**\n"
+                        f"📂 المجلد المطلوب: `{target_display}`\n"
+                        f"⏳ Task ID: `{task_id}` — ستصلك محتويات المجلد فوراً."
+                    )
+                    return
                 else:
-                    for base in search_bases:
-                        cand = base / ls_folder_query
-                        if cand.is_dir():
-                            folder_to_list = cand
-                            break
+                    await self.send_message(
+                        chat_id,
+                        "📥 **حاسوبك الشخصي (Local PC) غير متصل حالياً بالجسر (Offline).**\n\n"
+                        "💡 لاستعراض مجلدات حاسوبك وملفات سطح المكتب، تأكد من تشغيل:\n"
+                        "`scripts/start_bridge.bat` على حاسوبك الشخصي.\n\n"
+                        "أو اكتب `/bridge` لفحص حالة الاتصال."
+                    )
+                    return
             else:
-                # No arg → default to Desktop
-                folder_to_list = _known["desktop"]
+                from pathlib import Path as _Path
+                from app.tools.user_folders import get_known_user_folders as _get_folders
+                from app.tools.file_reader import list_directory
+                _known = _get_folders()
+                search_bases = []
+                if parent_loc and parent_loc in _known:
+                    search_bases.append(_known[parent_loc])
+                search_bases.extend([
+                    _known["desktop"],
+                    _known["documents"],
+                    _known["downloads"],
+                    _known["pictures"],
+                    _known["videos"],
+                    _known["music"],
+                    _Path.home(),
+                ])
 
-            if folder_to_list and folder_to_list.is_dir():
-                items = list_directory(str(folder_to_list))
-                if items:
-                    reply = f"📂 **محتويات `{folder_to_list.name}`** (`{folder_to_list}`):\n" + "\n".join(items)
+                folder_to_list = None
+                if ls_folder_query:
+                    direct = _Path(ls_folder_query).expanduser()
+                    if direct.is_dir():
+                        folder_to_list = direct
+                    elif ls_folder_query.lower() in _known:
+                        folder_to_list = _known[ls_folder_query.lower()]
+                    else:
+                        for base in search_bases:
+                            cand = base / ls_folder_query
+                            if cand.is_dir():
+                                folder_to_list = cand
+                                break
+                elif parent_loc and parent_loc in _known:
+                    folder_to_list = _known[parent_loc]
                 else:
-                    reply = f"📂 المجلد `{folder_to_list}` موجود لكنه **فارغ**."
-            else:
-                desktop_path = _known.get("desktop", _Path.home())
-                reply = (
-                    f"❌ ما لقيت المجلد `{ls_folder_query}` على حاسوبك.\n\n"
-                    f"💡 جرب:\n"
-                    f"• `/ls Desktop` — سطح المكتب (`{_known.get('desktop')}`)\n"
-                    f"• `/ls Documents` — المستندات\n"
-                    f"• `/ls Downloads` — التنزيلات\n"
-                    f"• أو مسار كامل مثل: `/ls C:\\Users\\DELL LATITUDE\\Desktop\\MyProject`"
-                )
-            await self.send_message(chat_id, reply)
-            return
+                    folder_to_list = _known["desktop"]
 
+                if folder_to_list and folder_to_list.is_dir():
+                    items = list_directory(str(folder_to_list))
+                    if items:
+                        reply = f"📂 **محتويات `{folder_to_list.name}`** (`{folder_to_list}`):\n" + "\n".join(items)
+                    else:
+                        reply = f"📂 المجلد `{folder_to_list.name}` (`{folder_to_list}`) موجود على حاسوبك لكنه **فارغ**."
+                else:
+                    reply = (
+                        f"❌ ما لقيت المجلد `{ls_folder_query or parent_loc}` على حاسوبك.\n\n"
+                        f"💡 جرب:\n"
+                        f"• `/ls Desktop` — سطح المكتب (`{_known.get('desktop')}`)\n"
+                        f"• `/ls Documents` — المستندات\n"
+                        f"• `/ls Downloads` — التنزيلات\n"
+                        f"• أو مسار كامل مثل: `/ls C:\\Users\\DELL LATITUDE\\Desktop\\MyProject`"
+                    )
+                await self.send_message(chat_id, reply)
+                return
 
         # Command: Get/Send File (/file, /get, or natural Arabic/Darija intent)
         is_file_request = False
@@ -454,7 +499,6 @@ class TelegramEmployeeBot:
             "file" in lowered and any(v in lowered for v in ("sift", "jib", "send", "download"))
         ):
             is_file_request = True
-            # Extract possible file name
             parts = text_stripped.split()
             for part in parts:
                 if "." in part and not part.startswith("http"):
@@ -464,10 +508,31 @@ class TelegramEmployeeBot:
                 target_file_query = parts[-1]
 
         if is_file_request and target_file_query:
+            import os as _os
+            if _os.name != "nt":
+                if bridge_manager.is_online:
+                    task_id = bridge_manager.queue_task(
+                        "find_file",
+                        {"query": target_file_query},
+                        chat_id=chat_id,
+                    )
+                    await self.send_message(
+                        chat_id,
+                        f"🌉 **جاري البحث عن الملف `{target_file_query}` في حاسوبك الشخصي عبر الجسر...**\n"
+                        f"📌 Task ID: `{task_id}` — ستصلك النتيجة فور العثور عليه."
+                    )
+                    return
+                else:
+                    await self.send_message(
+                        chat_id,
+                        f"📥 **حاسوبك الشخصي مغلق حالياً (Offline).**\n"
+                        f"لتصفح أو تحميل ملفات حاسوبك الشخصي، قم بتشغيل الجسر على حاسوبك أولاً عبر `scripts/start_bridge.bat`."
+                    )
+                    return
+
             await self.send_message(chat_id, f"🔍 جاري البحث عن الملف `{target_file_query}` في حاسوبك...")
             found_path = find_file(target_file_query)
             if found_path and found_path.is_file():
-                # Read short preview if text
                 preview = ""
                 try:
                     preview = read_text_file(str(found_path), max_chars=800)

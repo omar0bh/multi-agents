@@ -6,14 +6,22 @@ logger = logging.getLogger(__name__)
 
 def get_desktop_dir() -> Path:
     """Find the user's actual Desktop directory across English, Arabic, and French Windows with OneDrive."""
+    try:
+        from app.tools.user_folders import get_known_user_folders
+        known = get_known_user_folders()
+        if "desktop" in known and known["desktop"].is_dir():
+            return known["desktop"]
+    except Exception:
+        pass
+
     home = Path.home()
     for candidate in (
-        home / "OneDrive" / "سطح المكتب",
-        home / "OneDrive" / "Desktop",
-        home / "OneDrive" / "Bureau",
-        home / "سطح المكتب",
         home / "Desktop",
+        home / "سطح المكتب",
         home / "Bureau",
+        home / "OneDrive" / "Desktop",
+        home / "OneDrive" / "سطح المكتب",
+        home / "OneDrive" / "Bureau",
     ):
         if candidate.is_dir():
             return candidate
