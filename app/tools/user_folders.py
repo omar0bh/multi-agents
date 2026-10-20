@@ -43,8 +43,8 @@ def get_known_user_folders() -> dict[str, Path]:
     # Multi-lingual & localized candidates in order of preference
     candidates: dict[str, list[Path]] = {
         "desktop": [
-            onedrive / "سطح المكتب",
-            onedrive / "Desktop",
+            onedrive / "Desktop",          # renamed from Arabic ← priority now
+            onedrive / "سطح المكتب",       # old Arabic name (fallback)
             onedrive / "Bureau",
             home / "Desktop",
             home / "سطح المكتب",
@@ -52,34 +52,35 @@ def get_known_user_folders() -> dict[str, Path]:
         ],
         "videos": [
             home / "Videos",
-            onedrive / "ملفات الفيديو",
             onedrive / "Videos",
+            onedrive / "ملفات الفيديو",
             home / "ملفات الفيديو",
             home / "Vidéos",
         ],
         "pictures": [
             home / "Pictures",
-            onedrive / "الصور",
             onedrive / "Pictures",
+            onedrive / "الصور",
             home / "الصور",
             home / "Images",
         ],
         "documents": [
             home / "Documents",
-            onedrive / "المستندات",
             onedrive / "Documents",
+            onedrive / "المستندات",
             home / "المستندات",
         ],
         "downloads": [
-            home / "Downloads",
-            home / "التنزيلات",
+            home / "Downloads",            # standard Windows location (no OneDrive)
             onedrive / "Downloads",
+            home / "التنزيلات",
             home / "Téléchargements",
         ],
         "music": [
             home / "Music",
-            onedrive / "اموسيقى",
             onedrive / "Music",
+            onedrive / "اموسيقى",          # user's actual folder name
+            onedrive / "الموسيقى",
             home / "اموسيقى",
             home / "Musique",
         ],

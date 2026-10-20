@@ -347,16 +347,88 @@ class TelegramEmployeeBot:
                 await self.send_message(chat_id, f"⚠️ حدث خطأ أثناء فحص النماذج: `{e}`")
             return
 
-        # Command: List files (/ls, /dir)
-        if text_stripped.startswith(("/ls", "/dir")):
-            folder = text_stripped.replace("/ls", "").replace("/dir", "").strip() or "."
-            items = list_directory(folder)
-            if items:
-                reply = f"📂 **محتويات المجلد ({folder}):**\n" + "\n".join(items)
+        # Command: List files (/ls, /dir, or natural folder exploration in any language)
+        # Understands: "chof folder X", "what inside X", "go to folder X", "list X", etc.
+        is_ls_intent = text_stripped.startswith(("/ls", "/dir"))
+        ls_folder_query = ""
+
+        if is_ls_intent:
+            ls_folder_query = text_stripped.replace("/ls", "").replace("/dir", "").strip()
+        elif any(p in lowered for p in (
+            "what inside", "what's inside", "chof dakhel", "chof folder", "chof dossier",
+            "list folder", "list directory", "show folder", "show me folder",
+            "wach kayn", "chno kayn", "chno fi", "chno f ",
+            "contents of", "inside the folder", "go to folder", "go to this folder",
+            "told me what inside", "tell me what inside",
+        )):
+            is_ls_intent = True
+            # Extract folder name from the natural language message
+            import re as _re
+            name_patterns = [
+                r'(?:folder|dossier|directory)\s+(?:named|called|smito)?\s*([A-Za-z0-9_\-\. ]+)',
+                r'(?:go to|open|chof)\s+(?:this\s+)?(?:folder\s+)?([A-Za-z0-9_\-\. ]+)',
+                r'(?:inside|dakhel|fi)\s+([A-Za-z0-9_\-\. ]+)\s*(?:folder|dossier)?',
+            ]
+            for pat in name_patterns:
+                m = _re.search(pat, text_stripped, _re.IGNORECASE)
+                if m:
+                    cand = m.group(1).strip().rstrip("., !?")
+                    if len(cand) > 1 and cand.lower() not in (
+                        "folder", "dossier", "directory", "me", "it", "this", "the", "my"
+                    ):
+                        ls_folder_query = cand
+                        break
+            if not ls_folder_query:
+                skip = {"folder","dossier","this","the","inside","what","chof","go","to","and",
+                        "told","tell","show","list","me","it","my","is"}
+                words = [w for w in text_stripped.split() if len(w) > 2 and w.lower() not in skip]
+                if words:
+                    ls_folder_query = words[-1]
+
+        if is_ls_intent:
+            from pathlib import Path as _Path
+            # Build search base dirs: Desktop first, then Documents, Downloads, Home
+            _home = _Path.home()
+            _onedrive = _home / "OneDrive"
+            search_bases = [
+                _onedrive / "Desktop", _home / "Desktop",
+                _onedrive / "Documents", _home / "Documents",
+                _home / "Downloads",
+                _home,
+            ]
+            folder_to_list = None
+            if ls_folder_query:
+                direct = _Path(ls_folder_query).expanduser()
+                if direct.is_dir():
+                    folder_to_list = direct
+                else:
+                    for base in search_bases:
+                        cand = base / ls_folder_query
+                        if cand.is_dir():
+                            folder_to_list = cand
+                            break
             else:
-                reply = f"❌ لم يتم العثور على المجلد أو أنه فارغ: `{folder}`"
+                # No arg → default to Desktop
+                folder_to_list = next((b for b in search_bases[:2] if b.is_dir()), _home)
+
+            if folder_to_list:
+                items = list_directory(str(folder_to_list))
+                if items:
+                    reply = f"📂 **محتويات `{folder_to_list.name}`** (`{folder_to_list}`):\n" + "\n".join(items)
+                else:
+                    reply = f"📂 المجلد `{folder_to_list}` موجود لكنه **فارغ**."
+            else:
+                reply = (
+                    f"❌ ما لقيت المجلد `{ls_folder_query}` على حاسوبك.\n\n"
+                    f"💡 جرب:\n"
+                    f"• `/ls Desktop` — سطح المكتب\n"
+                    f"• `/ls Documents` — المستندات\n"
+                    f"• `/ls Downloads` — التنزيلات\n"
+                    f"• أو مسار كامل: `/ls C:\\Users\\DELL LATITUDE\\OneDrive\\Desktop`"
+                )
             await self.send_message(chat_id, reply)
             return
+
 
         # Command: Get/Send File (/file, /get, or natural Arabic/Darija intent)
         is_file_request = False
