@@ -362,7 +362,6 @@ class TelegramEmployeeBot:
             "told me what inside", "tell me what inside",
         )):
             is_ls_intent = True
-            # Extract folder name from the natural language message
             import re as _re
             name_patterns = [
                 r'(?:folder|dossier|directory)\s+(?:named|called|smito)?\s*([A-Za-z0-9_\-\. ]+)',
@@ -387,20 +386,29 @@ class TelegramEmployeeBot:
 
         if is_ls_intent:
             from pathlib import Path as _Path
-            # Build search base dirs: Desktop first, then Documents, Downloads, Home
-            _home = _Path.home()
-            _onedrive = _home / "OneDrive"
+            from app.tools.user_folders import get_known_user_folders as _get_folders
+            # Use registry-backed resolver for correct paths
+            _known = _get_folders()
             search_bases = [
-                _onedrive / "Desktop", _home / "Desktop",
-                _onedrive / "Documents", _home / "Documents",
-                _home / "Downloads",
-                _home,
+                _known["desktop"],
+                _known["documents"],
+                _known["downloads"],
+                _known["pictures"],
+                _known["videos"],
+                _known["music"],
+                _Path.home(),
             ]
+
             folder_to_list = None
             if ls_folder_query:
+                # 1. Direct absolute path?
                 direct = _Path(ls_folder_query).expanduser()
                 if direct.is_dir():
                     folder_to_list = direct
+                # 2. Known folder name (e.g. "Desktop", "Downloads")?
+                elif ls_folder_query.lower() in _known:
+                    folder_to_list = _known[ls_folder_query.lower()]
+                # 3. Subfolder inside known folders
                 else:
                     for base in search_bases:
                         cand = base / ls_folder_query
@@ -409,22 +417,23 @@ class TelegramEmployeeBot:
                             break
             else:
                 # No arg → default to Desktop
-                folder_to_list = next((b for b in search_bases[:2] if b.is_dir()), _home)
+                folder_to_list = _known["desktop"]
 
-            if folder_to_list:
+            if folder_to_list and folder_to_list.is_dir():
                 items = list_directory(str(folder_to_list))
                 if items:
                     reply = f"📂 **محتويات `{folder_to_list.name}`** (`{folder_to_list}`):\n" + "\n".join(items)
                 else:
                     reply = f"📂 المجلد `{folder_to_list}` موجود لكنه **فارغ**."
             else:
+                desktop_path = _known.get("desktop", _Path.home())
                 reply = (
                     f"❌ ما لقيت المجلد `{ls_folder_query}` على حاسوبك.\n\n"
                     f"💡 جرب:\n"
-                    f"• `/ls Desktop` — سطح المكتب\n"
+                    f"• `/ls Desktop` — سطح المكتب (`{_known.get('desktop')}`)\n"
                     f"• `/ls Documents` — المستندات\n"
                     f"• `/ls Downloads` — التنزيلات\n"
-                    f"• أو مسار كامل: `/ls C:\\Users\\DELL LATITUDE\\OneDrive\\Desktop`"
+                    f"• أو مسار كامل مثل: `/ls C:\\Users\\DELL LATITUDE\\Desktop\\MyProject`"
                 )
             await self.send_message(chat_id, reply)
             return
