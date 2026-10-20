@@ -43,8 +43,8 @@ def get_known_user_folders() -> dict[str, Path]:
     # Multi-lingual & localized candidates in order of preference
     candidates: dict[str, list[Path]] = {
         "desktop": [
-            onedrive / "Desktop",          # renamed from Arabic ← priority now
-            onedrive / "سطح المكتب",       # old Arabic name (fallback)
+            onedrive / "سطح المكتب",       # OneDrive Arabic (actual path on this machine)
+            onedrive / "Desktop",          # English fallback
             onedrive / "Bureau",
             home / "Desktop",
             home / "سطح المكتب",
