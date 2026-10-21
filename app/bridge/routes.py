@@ -104,6 +104,14 @@ async def report_task_result(
                 err = result.get("error") or "لم يتم العثور على الملف."
                 text = f"❌ {err}"
 
+        elif action in ("copy_file", "create_folder", "move_file", "create_file", "delete_path"):
+            detail = result.get("detail") or result.get("output") or ""
+            if result.get("ok"):
+                text = f"✅ **تحديث من حاسوبك الشخصي (Local PC):**\n{detail}"
+            else:
+                err = result.get("error") or "فشلت العملية."
+                text = f"❌ **خطأ على حاسوبك الشخصي:**\n{err}"
+
         else:
             details = result.get("detail") or result.get("output") or result.get("error") or ""
             text = (

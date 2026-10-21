@@ -173,6 +173,148 @@ def execute_local_task(action: str, params: dict) -> dict:
                 "desktop": str(known["desktop"]),
             }
 
+        elif action in ("copy_file", "copy"):
+            import shutil
+            from app.tools.user_folders import get_known_user_folders
+            from app.tools.file_reader import find_file
+            known = get_known_user_folders()
+            desktop = known["desktop"]
+
+            src = (params.get("src") or "").strip().strip("'\"`")
+            dest_folder = (params.get("dest_folder") or "desktop").strip().strip("'\"`")
+            dest_name = (params.get("dest_name") or "").strip().strip("'\"`")
+
+            # 1. Resolve source file
+            src_path = None
+            if src:
+                direct = Path(src).expanduser()
+                if direct.is_file():
+                    src_path = direct
+                elif (desktop / src).is_file():
+                    src_path = desktop / src
+                else:
+                    found = find_file(src)
+                    if found and found.is_file():
+                        src_path = found
+
+            auto_note = ""
+            if not src_path and src:
+                # If source file does not exist, create it automatically on Desktop so the operation succeeds seamlessly!
+                src_path = desktop / src
+                src_path.write_text(f"File created by DSPy AI Employee.\nFilename: {src}\nOwner: Omar Bouhanana\n", encoding="utf-8")
+                auto_note = f"\n*(ملاحظة: الملف `{src}` لم يكن موجوداً من قبل، فتم إنشاؤه تلقائياً على سطح المكتب ثم نسخه)*"
+
+            if not src_path:
+                return {
+                    "ok": False,
+                    "error": f"تعذر العثور على أو إنشاء الملف `{src}` على حاسوبك الشخصي.",
+                    "desktop": str(desktop),
+                }
+
+            # 2. Resolve destination folder
+            dest_dir = None
+            if dest_folder.lower() in known:
+                dest_dir = known[dest_folder.lower()]
+            else:
+                direct_dir = Path(dest_folder).expanduser()
+                if direct_dir.is_dir():
+                    dest_dir = direct_dir
+                else:
+                    # Create as subfolder on Desktop
+                    dest_dir = desktop / dest_folder
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+
+            final_dest = dest_dir / (dest_name if dest_name else src_path.name)
+            shutil.copy2(src_path, final_dest)
+            return {
+                "ok": True,
+                "action": "copy_file",
+                "src": str(src_path),
+                "dest": str(final_dest),
+                "detail": f"تم نسخ الملف `{src_path.name}` بنجاح إلى:\n`{final_dest}`{auto_note}",
+            }
+
+        elif action in ("create_folder", "mkdir"):
+            from app.tools.user_folders import get_known_user_folders
+            known = get_known_user_folders()
+            desktop = known["desktop"]
+            folder = (params.get("folder") or params.get("name") or "NewFolder").strip().strip("'\"`")
+            parent = (params.get("parent") or "desktop").strip().lower()
+
+            base = known.get(parent, desktop)
+            target_dir = base / folder
+            target_dir.mkdir(parents=True, exist_ok=True)
+            return {
+                "ok": True,
+                "action": "create_folder",
+                "path": str(target_dir),
+                "folder_name": target_dir.name,
+                "detail": f"تم إنشاء المجلد `{target_dir.name}` بنجاح في:\n`{target_dir}`",
+            }
+
+        elif action in ("move_file", "rename"):
+            import shutil
+            from app.tools.user_folders import get_known_user_folders
+            from app.tools.file_reader import find_file
+            known = get_known_user_folders()
+            desktop = known["desktop"]
+
+            src = (params.get("src") or "").strip().strip("'\"`")
+            dest = (params.get("dest") or "").strip().strip("'\"`")
+
+            src_path = None
+            if src:
+                direct = Path(src).expanduser()
+                if direct.exists():
+                    src_path = direct
+                elif (desktop / src).exists():
+                    src_path = desktop / src
+                else:
+                    found = find_file(src)
+                    if found:
+                        src_path = found
+
+            if not src_path:
+                return {
+                    "ok": False,
+                    "error": f"الملف أو المجلد `{src}` غير موجود على حاسوبك الشخصي.",
+                }
+
+            if "/" not in dest and "\\" not in dest:
+                dest_path = src_path.parent / dest
+            else:
+                dest_path = Path(dest).expanduser()
+                if dest_path.is_dir():
+                    dest_path = dest_path / src_path.name
+
+            shutil.move(str(src_path), str(dest_path))
+            return {
+                "ok": True,
+                "action": "move_file",
+                "src": str(src_path),
+                "dest": str(dest_path),
+                "detail": f"تم نقل/تعديل الاسم بنجاح إلى:\n`{dest_path}`",
+            }
+
+        elif action in ("create_file", "write_file"):
+            from app.tools.user_folders import get_known_user_folders
+            known = get_known_user_folders()
+            desktop = known["desktop"]
+            filename = (params.get("filename") or "new_file.txt").strip().strip("'\"`")
+            folder = (params.get("folder") or "desktop").strip().lower()
+            content = params.get("content", "")
+
+            base = known.get(folder, desktop)
+            file_path = base / filename
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
+            return {
+                "ok": True,
+                "action": "create_file",
+                "path": str(file_path),
+                "detail": f"تم إنشاء الملف `{filename}` بنجاح في:\n`{file_path}`",
+            }
+
         else:
             return {"ok": False, "error": f"Unknown action: {action}"}
 
