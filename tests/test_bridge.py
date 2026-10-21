@@ -24,7 +24,9 @@ def test_bridge_heartbeat_flow():
         "os": "Windows 11",
         "desktop_dir": "C:\\Users\\DELL\\Desktop",
     }
-    hb_resp = client.post("/api/bridge/heartbeat", json=heartbeat_payload)
+    import os
+    headers = {"X-Bridge-Secret": os.getenv("BRIDGE_SECRET", "")}
+    hb_resp = client.post("/api/bridge/heartbeat", json=heartbeat_payload, headers=headers)
     assert hb_resp.status_code == 200
     hb_data = hb_resp.json()
     assert hb_data["ok"] is True
@@ -36,7 +38,7 @@ def test_bridge_heartbeat_flow():
         "task_id": task_id,
         "result": {"ok": True, "output": "Done!"},
     }
-    report_resp = client.post("/api/bridge/task/report", json=report_payload)
+    report_resp = client.post("/api/bridge/task/report", json=report_payload, headers=headers)
     assert report_resp.status_code == 200
     assert report_resp.json()["ok"] is True
 

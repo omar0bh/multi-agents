@@ -181,33 +181,59 @@ def execute_local_task(action: str, params: dict) -> dict:
             desktop = known["desktop"]
 
             src = (params.get("src") or "").strip().strip("'\"`")
+            src_parent = (params.get("src_parent") or "").strip().strip("'\"`")
             dest_folder = (params.get("dest_folder") or "desktop").strip().strip("'\"`")
             dest_name = (params.get("dest_name") or "").strip().strip("'\"`")
 
-            # 1. Resolve source file
+            # 1. Resolve source file or folder
             src_path = None
             if src:
-                direct = Path(src).expanduser()
-                if direct.is_file():
-                    src_path = direct
-                elif (desktop / src).is_file():
-                    src_path = desktop / src
-                else:
-                    found = find_file(src)
-                    if found and found.is_file():
-                        src_path = found
+                # 1a. Check relative to src_parent inside desktop (e.g. desktop / 'doc sami' / 'new')
+                if src_parent:
+                    cand_parent = desktop / src_parent
+                    if (cand_parent / src).exists():
+                        src_path = (cand_parent / src).resolve()
 
-            auto_note = ""
-            if not src_path and src:
-                # If source file does not exist, create it automatically on Desktop so the operation succeeds seamlessly!
-                src_path = desktop / src
-                src_path.write_text(f"File created by DSPy AI Employee.\nFilename: {src}\nOwner: Omar Bouhanana\n", encoding="utf-8")
-                auto_note = f"\n*(ملاحظة: الملف `{src}` لم يكن موجوداً من قبل، فتم إنشاؤه تلقائياً على سطح المكتب ثم نسخه)*"
+                # 1b. Check direct path or path with subdirectories (e.g. 'doc sami/new')
+                if not src_path:
+                    direct = Path(src).expanduser()
+                    if direct.exists():
+                        src_path = direct.resolve()
+                    elif (desktop / src).exists():
+                        src_path = (desktop / src).resolve()
 
-            if not src_path:
+                # 1c. Search in known user folders
+                if not src_path:
+                    for k_name, k_dir in known.items():
+                        if (k_dir / src).exists():
+                            src_path = (k_dir / src).resolve()
+                            break
+
+                # 1d. Search recursively inside Desktop (up to 3 levels deep)
+                if not src_path:
+                    target_name = Path(src).name.lower()
+                    for root, dirs, files in os.walk(desktop):
+                        rel = Path(root).relative_to(desktop)
+                        if len(rel.parts) > 3:
+                            dirs.clear()
+                            continue
+                        for d in dirs:
+                            if d.lower() == target_name:
+                                src_path = (Path(root) / d).resolve()
+                                break
+                        if src_path:
+                            break
+                        for f in files:
+                            if f.lower() == target_name:
+                                src_path = (Path(root) / f).resolve()
+                                break
+                        if src_path:
+                            break
+
+            if not src_path or not src_path.exists():
                 return {
                     "ok": False,
-                    "error": f"تعذر العثور على أو إنشاء الملف `{src}` على حاسوبك الشخصي.",
+                    "error": f"تعذر العثور على الملف أو المجلد `{src}` على حاسوبك الشخصي (تم البحث في Desktop والمجلدات التابعة).",
                     "desktop": str(desktop),
                 }
 
@@ -218,21 +244,39 @@ def execute_local_task(action: str, params: dict) -> dict:
             else:
                 direct_dir = Path(dest_folder).expanduser()
                 if direct_dir.is_dir():
-                    dest_dir = direct_dir
+                    dest_dir = direct_dir.resolve()
                 else:
-                    # Create as subfolder on Desktop
-                    dest_dir = desktop / dest_folder
+                    # Check or create as subfolder on Desktop (e.g. desktop / 'chess')
+                    dest_dir = (desktop / dest_folder).resolve()
                     dest_dir.mkdir(parents=True, exist_ok=True)
 
-            final_dest = dest_dir / (dest_name if dest_name else src_path.name)
-            shutil.copy2(src_path, final_dest)
+            target_name = dest_name if dest_name else src_path.name
+            final_dest = dest_dir / target_name
+
+            # Check if source and destination are the exact same path
+            if final_dest.resolve() == src_path.resolve():
+                return {
+                    "ok": False,
+                    "error": f"المسار المصدر والهدف متطابقان (`{src_path}`). لا يمكن النسخ إلى نفس المكان بنفس الاسم.",
+                }
+
+            # 3. Perform Copy (folder vs file)
+            if src_path.is_dir():
+                shutil.copytree(str(src_path), str(final_dest), dirs_exist_ok=True)
+                is_dir_text = "المجلد"
+            else:
+                shutil.copy2(str(src_path), str(final_dest))
+                is_dir_text = "الملف"
+
             return {
                 "ok": True,
                 "action": "copy_file",
                 "src": str(src_path),
                 "dest": str(final_dest),
-                "detail": f"تم نسخ الملف `{src_path.name}` بنجاح إلى:\n`{final_dest}`{auto_note}",
+                "is_folder": src_path.is_dir(),
+                "detail": f"تم نسخ {is_dir_text} `{src_path.name}` بنجاح إلى:\n`{final_dest}`",
             }
+
 
         elif action in ("create_folder", "mkdir"):
             from app.tools.user_folders import get_known_user_folders

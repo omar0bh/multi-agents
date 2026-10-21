@@ -691,102 +691,31 @@ class TelegramEmployeeBot:
                 await self.send_message(chat_id, f"❌ حدث خطأ أثناء تحميل الصورة: {dl_res.get('error')}")
                 return
 
-        # Command: File & Folder Operations (Copy, Move, Rename, Make Folder)
-        is_file_op = False
-        file_op_action = ""
-        file_op_params = {}
+        # Command: File & Folder Operations (Copy, Move, Rename, Create Folder, etc.)
+        from app.tools.intent_parser import parse_file_operation_intent
+        file_intent = await parse_file_operation_intent(text_stripped)
 
-        # 1. Copy Intent: "copy omar.txt and paste it in new folder named with omar1", "kopi omar.txt f omar1", "انسخ ..."
-        if any(w in lowered for w in ("copy ", "kopi ", "copier ", "انسخ ", "نسخ ")) or (
-            "copy" in lowered and any(k in lowered for k in ("file", "txt", "folder", "dossier", "past", "paste", " f ", " to ", " in "))
-        ):
-            is_file_op = True
-            file_op_action = "copy_file"
+        if file_intent.get("is_file_op"):
+            if file_intent.get("error"):
+                await self.send_message(chat_id, f"⚠️ {file_intent.get('error')}")
+                return
 
-            # Extract source file
-            m_src = re.search(r'\b([A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,5})\b', text_stripped)
-            src_val = m_src.group(1) if m_src else ""
-            if not src_val:
-                m_f = re.search(r'\b(?:file|fichier|ملف)\s+([A-Za-z0-9_\-\.]+)', text_stripped, re.I)
-                if m_f:
-                    src_val = m_f.group(1).strip()
-            if not src_val:
-                parts = text_stripped.split()
-                for p in parts:
-                    if "." in p:
-                        src_val = p.strip(",.!?\"'")
-                        break
-
-            # Extract destination folder
-            m_dest = re.search(
-                r'\b(?:past(?:e)?\s+(?:it\s+)?in|into|to|f)\b\s+(?:a\s+)?(?:new\s+)?(?:folder\s+|dossier\s+|مجلد\s+)?(?:and\s+)?(?:named\s+(?:with\s+)?|called\s+|with\s+|smito\s+|ismuhu\s+)?([A-Za-z0-9_\-]+)',
-                text_stripped,
-                re.I,
-            )
-            dest_val = m_dest.group(1).strip() if m_dest else "desktop"
-            if dest_val.lower() in ("the", "this", "my", "a", "new"):
-                dest_val = "desktop"
-
-            file_op_params = {
-                "src": src_val or "omar.txt",
-                "dest_folder": dest_val,
+            action = file_intent.get("action")
+            params = {
+                "src": file_intent.get("src", ""),
+                "src_parent": file_intent.get("src_parent", ""),
+                "dest_folder": file_intent.get("dest_folder", "desktop"),
+                "dest_name": file_intent.get("dest_name", ""),
+                "is_folder": file_intent.get("is_folder", False),
+                "folder": file_intent.get("folder", file_intent.get("src", "")),
+                "parent": file_intent.get("parent", "desktop"),
             }
+            lbl = file_intent.get("label_ar") or f"تنفيذ {action}"
 
-        # 2. Folder Creation Intent: "create folder omar1", "sawb dossier omar1 f desktop", "dir folder omar1"
-        elif any(p in lowered for p in (
-            "create folder", "create a folder", "make folder", "make a folder",
-            "dir folder", "dir dossier", "sawb dossier", "sawb folder", "bni folder",
-            "انشئ مجلد", "اصنع مجلد", "دير مجلد", "صاوب مجلد", "mkdir "
-        )) and not any(k in lowered for k in ("project", "machro3", "site", "website", "app", "web")):
-            is_file_op = True
-            file_op_action = "create_folder"
-
-            m_fn = re.search(
-                r'\b(?:folder|dossier|مجلد|mkdir)\s+(?:named\s+|called\s+|smito\s+|ismuhu\s+)?([A-Za-z0-9_\-]+)',
-                text_stripped,
-                re.I,
-            )
-            folder_name = m_fn.group(1).strip() if m_fn else ""
-            if not folder_name or folder_name.lower() in ("named", "called", "smito", "on", "in", "desktop", "the", "a", "new"):
-                parts = text_stripped.split()
-                for p in reversed(parts):
-                    clean_p = p.strip("., !?\"'")
-                    if clean_p.lower() not in ("desktop", "bureau", "on", "in", "f", "fl", "folder", "dossier", "a", "new", "named"):
-                        folder_name = clean_p
-                        break
-
-            file_op_params = {
-                "folder": folder_name or "NewFolder",
-                "parent": "desktop",
-            }
-
-        # 3. Move / Rename Intent
-        elif any(w in lowered for w in ("move ", "rename ", "déplacer ", "renommer ", "بدل اسم", "غير اسم", "حول ملف")):
-            is_file_op = True
-            file_op_action = "move_file"
-            parts = text_stripped.split()
-            src_val = ""
-            for p in parts:
-                if "." in p:
-                    src_val = p.strip(",.!?\"'")
-                    break
-            dest_val = parts[-1].strip(",.!?\"'") if parts else ""
-            file_op_params = {
-                "src": src_val,
-                "dest": dest_val,
-            }
-
-        if is_file_op:
             import os as _os
             if _os.name != "nt":
                 if bridge_manager.is_online:
-                    task_id = bridge_manager.queue_task(file_op_action, file_op_params, chat_id=chat_id)
-                    action_labels = {
-                        "copy_file": f"نسخ الملف `{file_op_params.get('src')}` إلى المجلد `{file_op_params.get('dest_folder')}`",
-                        "create_folder": f"إنشاء المجلد `{file_op_params.get('folder')}`",
-                        "move_file": f"نقل/تعديل اسم الملف `{file_op_params.get('src')}`",
-                    }
-                    lbl = action_labels.get(file_op_action, file_op_action)
+                    task_id = bridge_manager.queue_task(action, params, chat_id=chat_id)
                     await self.send_message(
                         chat_id,
                         f"🌉 **جاري تنفيذ العملية على حاسوبك الشخصي عبر الجسر...**\n"
@@ -804,25 +733,24 @@ class TelegramEmployeeBot:
                     return
             else:
                 from scripts.local_bridge import execute_local_task
-                res = execute_local_task(file_op_action, file_op_params)
+                res = execute_local_task(action, params)
                 if res.get("ok"):
                     await self.send_message(chat_id, f"✅ **تحديث من حاسوبك الشخصي:**\n{res.get('detail')}")
                 else:
                     await self.send_message(chat_id, f"❌ **خطأ:**\n{res.get('error')}")
                 return
 
-        # Command: Create Project / Website / Folder / File on Desktop
+        # Command: Create Project / Website / Scaffold on Desktop
         is_create_intent = (
             text_stripped.startswith(("/create", "/new", "/make"))
             or (
-                any(p in lowered for p in ("create", "dir ", "sawb ", "creer ", "créer ", "make "))
-                and any(k in lowered for k in ("file", "folder", "dossier", "project", "machro3", "site", "website", "desktop", "bureau", "omarchil"))
+                any(p in lowered for p in ("create", "sawb ", "creer ", "créer ", "make "))
+                and any(k in lowered for k in ("project", "machro3", "site", "website", "app", "application"))
             )
             or any(
                 p in lowered for p in (
-                    "create project", "create file", "create folder", "dir machro3", "dir file", "dir dossier",
-                    "cree projet", "cree fichier", "cree dossier", "sawb site", "sawb dossier", "sawb file",
-                    "creer site", "create website", "create site", "sawb li site", "sawb li file", "sawb li dossier"
+                    "create project", "dir machro3", "cree projet", "sawb site",
+                    "creer site", "create website", "create site", "sawb li site"
                 )
             )
         )
