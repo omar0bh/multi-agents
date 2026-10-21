@@ -35,7 +35,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 import httpx
 
-from app.tools.file_reader import delete_path, find_file, read_text_file
+from app.tools.file_reader import delete_path, find_file, list_directory, read_text_file
 from app.tools.image_downloader import download_web_image
 from app.tools.project_scaffold import create_project_on_desktop, get_desktop_dir
 from app.tools.terminal_tool import run_safe_command
@@ -112,19 +112,29 @@ def execute_local_task(action: str, params: dict) -> dict:
             filename = params.get("filename", "")
             return download_web_image(query, folder_name=folder, filename=filename)
 
-        elif action == "find_file":
-            query = params.get("query", "")
+        elif action in ("find_file", "read_file"):
+            query = (params.get("query") or params.get("src") or params.get("path") or "").strip()
             found = find_file(query)
-            if found:
-                preview = read_text_file(str(found), max_chars=1000)
-                return {"ok": True, "path": str(found), "preview": preview}
-            return {"ok": False, "error": f"File not found: {query}"}
+            if not found:
+                from app.tools.user_folders import get_known_user_folders
+                desktop = get_known_user_folders()["desktop"]
+                if (desktop / query).exists():
+                    found = desktop / query
+            if found and found.is_file():
+                preview = read_text_file(str(found), max_chars=2000)
+                return {
+                    "ok": True,
+                    "action": "read_file",
+                    "path": str(found),
+                    "preview": preview,
+                    "detail": f"📄 **محتوى الملف `{found.name}`:**\n```\n{preview}\n```",
+                }
+            return {"ok": False, "error": f"تعذر العثور على الملف `{query}` على حاسوبك الشخصي."}
 
         elif action in ("list_dir", "ls"):
-            from app.tools.file_reader import list_directory
             from app.tools.user_folders import get_known_user_folders
-            folder = (params.get("folder") or "").strip()
-            parent = (params.get("parent") or "").strip().lower()
+            folder = (params.get("folder") or params.get("src") or "").strip()
+            parent = (params.get("parent") or params.get("dest_folder") or "").strip().lower()
             known = get_known_user_folders()
 
             target_path = None
@@ -176,7 +186,6 @@ def execute_local_task(action: str, params: dict) -> dict:
         elif action in ("copy_file", "copy"):
             import shutil
             from app.tools.user_folders import get_known_user_folders
-            from app.tools.file_reader import find_file
             known = get_known_user_folders()
             desktop = known["desktop"]
 
@@ -277,15 +286,21 @@ def execute_local_task(action: str, params: dict) -> dict:
                 "detail": f"تم نسخ {is_dir_text} `{src_path.name}` بنجاح إلى:\n`{final_dest}`",
             }
 
-
         elif action in ("create_folder", "mkdir"):
             from app.tools.user_folders import get_known_user_folders
             known = get_known_user_folders()
             desktop = known["desktop"]
-            folder = (params.get("folder") or params.get("name") or "NewFolder").strip().strip("'\"`")
-            parent = (params.get("parent") or "desktop").strip().lower()
+            folder = (params.get("folder") or params.get("src") or params.get("name") or "NewFolder").strip().strip("'\"`")
+            parent = (params.get("parent") or params.get("dest_folder") or "desktop").strip()
 
-            base = known.get(parent, desktop)
+            base = known.get(parent.lower())
+            if not base:
+                cand = desktop / parent
+                if cand.is_dir():
+                    base = cand
+                else:
+                    base = desktop
+
             target_dir = base / folder
             target_dir.mkdir(parents=True, exist_ok=True)
             return {
@@ -299,37 +314,51 @@ def execute_local_task(action: str, params: dict) -> dict:
         elif action in ("move_file", "rename"):
             import shutil
             from app.tools.user_folders import get_known_user_folders
-            from app.tools.file_reader import find_file
             known = get_known_user_folders()
             desktop = known["desktop"]
 
-            src = (params.get("src") or "").strip().strip("'\"`")
-            dest = (params.get("dest") or "").strip().strip("'\"`")
+            src = (params.get("src") or params.get("path") or "").strip().strip("'\"`")
+            dest = (params.get("dest") or params.get("dest_folder") or params.get("dest_name") or "").strip().strip("'\"`")
+            src_parent = (params.get("src_parent") or "").strip().strip("'\"`")
 
             src_path = None
             if src:
-                direct = Path(src).expanduser()
-                if direct.exists():
-                    src_path = direct
-                elif (desktop / src).exists():
-                    src_path = desktop / src
-                else:
-                    found = find_file(src)
-                    if found:
-                        src_path = found
+                if src_parent:
+                    cand = desktop / src_parent / src
+                    if cand.exists():
+                        src_path = cand
+                if not src_path:
+                    direct = Path(src).expanduser()
+                    if direct.exists():
+                        src_path = direct
+                    elif (desktop / src).exists():
+                        src_path = desktop / src
+                    else:
+                        found = find_file(src)
+                        if found:
+                            src_path = found
 
             if not src_path:
                 return {
                     "ok": False,
-                    "error": f"الملف أو المجلد `{src}` غير موجود على حاسوبك الشخصي.",
+                    "error": f"الملف أو المجلد `{src}` غير موجود على حاسوبك الشخصي لنقله أو تعديل اسمه.",
                 }
 
-            if "/" not in dest and "\\" not in dest:
+            if not dest:
+                return {"ok": False, "error": "لم يتم تحديد الوجهة أو الاسم الجديد."}
+
+            if "/" not in dest and "\\" not in dest and "." in dest and src_path.is_file():
                 dest_path = src_path.parent / dest
+            elif dest.lower() in known:
+                dest_path = known[dest.lower()] / src_path.name
             else:
-                dest_path = Path(dest).expanduser()
-                if dest_path.is_dir():
-                    dest_path = dest_path / src_path.name
+                direct_dest = Path(dest).expanduser()
+                if direct_dest.is_dir():
+                    dest_path = direct_dest / src_path.name
+                elif (desktop / dest).is_dir():
+                    dest_path = (desktop / dest) / src_path.name
+                else:
+                    dest_path = src_path.parent / dest
 
             shutil.move(str(src_path), str(dest_path))
             return {
@@ -337,18 +366,25 @@ def execute_local_task(action: str, params: dict) -> dict:
                 "action": "move_file",
                 "src": str(src_path),
                 "dest": str(dest_path),
-                "detail": f"تم نقل/تعديل الاسم بنجاح إلى:\n`{dest_path}`",
+                "detail": f"تم نقل/تعديل اسم `{src_path.name}` بنجاح إلى:\n`{dest_path}`",
             }
 
         elif action in ("create_file", "write_file"):
             from app.tools.user_folders import get_known_user_folders
             known = get_known_user_folders()
             desktop = known["desktop"]
-            filename = (params.get("filename") or "new_file.txt").strip().strip("'\"`")
-            folder = (params.get("folder") or "desktop").strip().lower()
+            filename = (params.get("filename") or params.get("src") or "new_file.txt").strip().strip("'\"`")
+            folder = (params.get("folder") or params.get("dest_folder") or "desktop").strip()
             content = params.get("content", "")
 
-            base = known.get(folder, desktop)
+            base = known.get(folder.lower())
+            if not base:
+                cand = desktop / folder
+                if cand.is_dir():
+                    base = cand
+                else:
+                    base = desktop
+
             file_path = base / filename
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content, encoding="utf-8")

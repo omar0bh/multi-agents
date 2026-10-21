@@ -705,6 +705,8 @@ class TelegramEmployeeBot:
                 "src": file_intent.get("src", ""),
                 "path": file_intent.get("src", ""),
                 "target": file_intent.get("src", ""),
+                "query": file_intent.get("src", ""),
+                "content": file_intent.get("content", ""),
                 "src_parent": file_intent.get("src_parent", ""),
                 "dest_folder": file_intent.get("dest_folder", "desktop"),
                 "dest_name": file_intent.get("dest_name", ""),

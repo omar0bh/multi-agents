@@ -43,11 +43,13 @@ async def parse_file_operation_intent(text: str) -> dict:
     indicators = (
         "copy", "kopi", "copier", "past", "paste", "coller", "colle",
         "file", "fichier", "folder", "dossier", "dossiers", "files",
-        "desktop", "bureau", "documents", "downloads",
+        "desktop", "bureau", "documents", "downloads", "pictures", "videos",
         "create folder", "make folder", "mkdir", "dir folder", "sawb dossier",
+        "create file", "make file", "dir file", "sawb file", "صاوب ملف", "انشئ ملف",
+        "read", "9ra", "lire", "chof chno f", "وريني شنو كاين", "اقرا", "شوف شنو في",
         "move ", "rename ", "déplacer", "renommer",
         "delete ", "supprimer", "mse7", "khwi",
-        "list ", "ls ", "chof chno f", "وريني شنو كاين",
+        "list ", "ls ", "شكون كاين", "أظهر الملفات",
         "انسخ", "نسخ", "انقل", "نقل", "احذف", "حذف", "انشئ مجلد", "صاوب مجلد", "دير مجلد"
     )
     if not any(ind in lowered for ind in indicators):
@@ -66,18 +68,23 @@ User instruction:
 Return ONLY a valid JSON object matching this schema:
 {{
     "is_pc_operation": true or false,
-    "action": "copy_file" | "create_folder" | "move_file" | "delete_path" | "list_dir" | "none",
+    "action": "copy_file" | "create_folder" | "create_file" | "read_file" | "move_file" | "delete_path" | "list_dir" | "none",
     "is_folder": true or false,
-    "src": "source file or folder name (e.g. 'new' or 'doc sami/new' or 'report.pdf')",
+    "src": "source file or folder name (e.g. 'new' or 'doc sami/new' or 'report.txt')",
     "src_parent": "parent folder of source if mentioned (e.g. 'doc sami' or 'desktop')",
     "dest_folder": "destination folder (e.g. 'chess' or 'desktop' or 'documents')",
     "dest_name": "new filename or folder name if renaming, otherwise empty string",
+    "content": "text content if creating/writing a file, otherwise empty string",
     "label_ar": "short clear description in Arabic of the operation"
 }}
 IMPORTANT:
 - If user wants to copy/paste, action is 'copy_file'.
 - If user wants to create a folder/directory, action is 'create_folder'.
+- If user wants to create/write a file, action is 'create_file'.
+- If user wants to read/view a file, action is 'read_file'.
 - If user wants to move or rename, action is 'move_file'.
+- If user wants to delete/remove a file or folder, action is 'delete_path'.
+- If user wants to list contents of a directory, action is 'list_dir'.
 - NEVER make up or hallucinate filenames that the user did not mention! If no file/folder is named, leave 'src' empty.
 """
             async with httpx.AsyncClient(timeout=12.0) as client:
@@ -103,6 +110,7 @@ IMPORTANT:
                         src_parent = (parsed.get("src_parent") or "").strip()
                         dest_folder = (parsed.get("dest_folder") or "desktop").strip()
                         dest_name = (parsed.get("dest_name") or "").strip()
+                        content = parsed.get("content") or ""
                         is_folder = bool(parsed.get("is_folder"))
                         label_ar = parsed.get("label_ar") or ""
 
@@ -120,6 +128,7 @@ IMPORTANT:
                             "src_parent": src_parent,
                             "dest_folder": dest_folder,
                             "dest_name": dest_name,
+                            "content": content,
                             "is_folder": is_folder,
                             "label_ar": label_ar,
                         }

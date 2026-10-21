@@ -124,13 +124,29 @@ def delete_path(target: str) -> dict:
         if not is_safe:
             return {"ok": False, "error": reason}
         try:
+            import stat
+            import subprocess
             is_dir = target_path.is_dir()
             if is_dir:
-                shutil.rmtree(target_path)
+                def _handle_readonly(func, path, exc_info):
+                    try:
+                        os.chmod(path, stat.S_IWRITE)
+                        func(path)
+                    except Exception:
+                        pass
+                shutil.rmtree(target_path, onerror=_handle_readonly)
+                if target_path.exists():
+                    # Fallback via PowerShell force remove
+                    subprocess.run(["powershell", "-NoProfile", "-Command", f'Remove-Item -LiteralPath "{target_path}" -Recurse -Force'], capture_output=True)
                 item_type = "المجلد"
             else:
-                target_path.unlink()
+                try:
+                    target_path.unlink()
+                except PermissionError:
+                    os.chmod(str(target_path), stat.S_IWRITE)
+                    target_path.unlink()
                 item_type = "الملف"
+
             return {
                 "ok": True,
                 "path": str(target_path),
