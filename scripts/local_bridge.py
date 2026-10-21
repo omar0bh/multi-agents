@@ -102,8 +102,8 @@ def execute_local_task(action: str, params: dict) -> dict:
             cmd = params.get("cmd", "")
             return run_safe_command(cmd)
 
-        elif action == "delete_path":
-            path = params.get("path", "")
+        elif action in ("delete_path", "delete"):
+            path = (params.get("path") or params.get("src") or params.get("target") or params.get("folder") or "").strip()
             return delete_path(path)
 
         elif action == "download_image":

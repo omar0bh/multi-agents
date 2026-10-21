@@ -703,6 +703,8 @@ class TelegramEmployeeBot:
             action = file_intent.get("action")
             params = {
                 "src": file_intent.get("src", ""),
+                "path": file_intent.get("src", ""),
+                "target": file_intent.get("src", ""),
                 "src_parent": file_intent.get("src_parent", ""),
                 "dest_folder": file_intent.get("dest_folder", "desktop"),
                 "dest_name": file_intent.get("dest_name", ""),

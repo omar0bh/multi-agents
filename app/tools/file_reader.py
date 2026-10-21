@@ -73,35 +73,75 @@ def delete_path(target: str) -> dict:
     import shutil
     cleaned = target.strip().strip("'\"`")
     if not cleaned:
-        return {"ok": False, "error": "No target specified."}
+        return {"ok": False, "error": "لم يتم تحديد اسم الملف أو المجلد المطلوب حذفه."}
 
-    home = Path.home()
+    from app.tools.user_folders import get_known_user_folders
+    known = get_known_user_folders()
+    desktop = known.get("desktop", Path.home() / "Desktop")
+
     candidates = [
-        (home / "OneDrive" / "سطح المكتب" / cleaned).resolve(),
-        (home / "OneDrive" / "Desktop" / cleaned).resolve(),
-        (home / "Desktop" / cleaned).resolve(),
-        (home / "Bureau" / cleaned).resolve(),
-        (home / cleaned).resolve(),
-        (PROJECT_ROOT / cleaned).resolve(),
+        (desktop / cleaned).resolve(),
         Path(cleaned).expanduser().resolve(),
     ]
+    for k_dir in known.values():
+        candidates.append((k_dir / cleaned).resolve())
+    candidates.extend([
+        (Path.home() / cleaned).resolve(),
+        (PROJECT_ROOT / cleaned).resolve(),
+    ])
 
+    # Search in Desktop if not found directly
+    target_path = None
     for p in candidates:
         if p.exists():
-            from app.tools.security_guard import is_path_safe_for_deletion
-            is_safe, reason = is_path_safe_for_deletion(p)
-            if not is_safe:
-                return {"ok": False, "error": reason}
-            try:
-                if p.is_dir():
-                    shutil.rmtree(p)
-                else:
-                    p.unlink()
-                return {"ok": True, "path": str(p), "name": p.name}
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
+            target_path = p
+            break
 
-    return {"ok": False, "error": f"File or folder not found: {cleaned}"}
+    if not target_path:
+        # Shallow walk in Desktop to locate by name
+        target_name = Path(cleaned).name.lower()
+        for root, dirs, files in os.walk(desktop):
+            rel = Path(root).relative_to(desktop)
+            if len(rel.parts) > 2:
+                dirs.clear()
+                continue
+            for d in dirs:
+                if d.lower() == target_name:
+                    target_path = (Path(root) / d).resolve()
+                    break
+            if target_path:
+                break
+            for f in files:
+                if f.lower() == target_name:
+                    target_path = (Path(root) / f).resolve()
+                    break
+            if target_path:
+                break
+
+    if target_path and target_path.exists():
+        from app.tools.security_guard import is_path_safe_for_deletion
+        is_safe, reason = is_path_safe_for_deletion(target_path)
+        if not is_safe:
+            return {"ok": False, "error": reason}
+        try:
+            is_dir = target_path.is_dir()
+            if is_dir:
+                shutil.rmtree(target_path)
+                item_type = "المجلد"
+            else:
+                target_path.unlink()
+                item_type = "الملف"
+            return {
+                "ok": True,
+                "path": str(target_path),
+                "name": target_path.name,
+                "detail": f"تم حذف {item_type} `{target_path.name}` بنجاح من حاسوبك الشخصي.\n📁 المسار المحذوف: `{target_path}`",
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    return {"ok": False, "error": f"تعذر العثور على `{cleaned}` على حاسوبك الشخصي لحذفه."}
+
 
 
 
