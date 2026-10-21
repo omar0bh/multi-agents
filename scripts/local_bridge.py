@@ -20,9 +20,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Force UTF-8 on Windows consoles to support Arabic paths and emojis cleanly
-if hasattr(sys.stdout, "reconfigure"):
+if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
+if sys.stderr is not None and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv
@@ -71,15 +71,22 @@ def gather_pc_info() -> dict:
 
 def safe_print(msg: str):
     try:
-        text = str(msg) + "\n"
-        sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
-        sys.stdout.buffer.flush()
+        log_file = PROJECT_ROOT / "bridge.log"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
     except Exception:
+        pass
+
+    if sys.stdout is not None:
         try:
-            clean = str(msg).encode("ascii", errors="replace").decode("ascii")
-            print(clean, flush=True)
+            text = str(msg) + "\n"
+            sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+            sys.stdout.buffer.flush()
         except Exception:
-            pass
+            try:
+                print(str(msg), flush=True)
+            except Exception:
+                pass
 
 
 def execute_local_task(action: str, params: dict) -> dict:
