@@ -532,14 +532,22 @@ class TelegramEmployeeBot:
         elif any(verb in lowered for verb in ("jibli", "siftli", "jib li", "sift li", "send file", "get file", "arani file")) or (
             "file" in lowered and any(v in lowered for v in ("sift", "jib", "send", "download"))
         ):
-            is_file_request = True
-            parts = text_stripped.split()
-            for part in parts:
-                if "." in part and not part.startswith("http"):
-                    target_file_query = part.strip(",.!?\"'")
-                    break
-            if not target_file_query and len(parts) >= 2:
-                target_file_query = parts[-1]
+            # Do NOT treat execution / cleanup / script instructions as simple file downloads
+            if any(w in lowered for w in ("run", "script", "cleanup", "performance", "clean", "تقرير", "نفذ", "شغل", "create")):
+                is_file_request = False
+            else:
+                is_file_request = True
+                parts = text_stripped.split()
+                for part in parts:
+                    if "." in part and not part.startswith("http"):
+                        target_file_query = part.strip(",.!?\"'")
+                        break
+                if not target_file_query and len(parts) >= 2:
+                    target_file_query = parts[-1].strip(",.!?\"'")
+                
+                # If target_file_query is a generic English / Darija stopword, cancel file request
+                if target_file_query.lower() in ("files", "file", "all", "the", "it", "me", "them", "these", "script", "scripts", "machine", "report", "documents", "created"):
+                    is_file_request = False
 
         if is_file_request and target_file_query:
             import os as _os

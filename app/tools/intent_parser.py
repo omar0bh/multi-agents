@@ -61,9 +61,33 @@ async def parse_file_operation_intent(text: str) -> dict:
         "rattab", "ratteb", "rttb", "arrange", "organise", "organiz",
         "wrinh desktop", "wrin l desktop", "aikon", "icons", "aykonat",
         "شوف الشاشة", "رتب الأيقونات", "صورة الشاشة", "أيقونات",
+        # System Cleanup & Performance
+        "cleanup", "clean cache", "clean up", "performance report", "system cleanup",
+        "clean pc", "clean my pc", "clear cache", "cache cleanup", "high-resource",
+        "run these scripts", "run the scripts", "run scripts", "execute cleanup",
+        "تنظيف", "نظف", "تقرير الأداء", "فحص الأداء", "khwi cache", "n9i pc", "n9i lpc",
     )
     if not any(ind in lowered for ind in indicators):
         return {"is_file_op": False}
+
+    # ── Fast path: system cleanup & performance commands ─────────────────────
+    _cleanup_kw = (
+        "system cleanup", "performance report", "clean cache", "cache cleanup",
+        "clean pc", "clean my pc", "clear cache", "high-resource",
+        "run these scripts", "run the scripts", "run scripts", "execute cleanup",
+        "تنظيف النظام", "تقرير الأداء", "تنظيف الكاش", "فحص الأداء",
+        "نظف البي سي", "نظف الحاسوب", "khwi cache", "n9i pc", "n9i lpc",
+    )
+    if any(kw in lowered for kw in _cleanup_kw) or (
+        ("cleanup" in lowered or "clean" in lowered or "تنظيف" in lowered or "نظف" in lowered)
+        and ("pc" in lowered or "cache" in lowered or "system" in lowered or "نظام" in lowered or "كاش" in lowered)
+    ):
+        return {
+            "is_file_op": True,
+            "action": "system_cleanup_and_report",
+            "src": "", "dest_folder": "", "is_folder": False,
+            "label_ar": "تنظيف كاش النظام وفحص الأداء وإنشاء ملفات التقرير (CSV & TXT)",
+        }
 
     # ── Fast path: desktop vision / layout commands (no LLM needed) ──────────
     _desktop_screenshot_kw = (

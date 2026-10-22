@@ -434,6 +434,11 @@ def execute_local_task(action: str, params: dict) -> dict:
             result["ok"] = True
             return result
 
+        elif action in ("system_cleanup_and_report", "pc_performance_cleanup", "performance_report", "clean_pc"):
+            from app.tools.system_cleaner import execute_full_system_cleanup_and_report
+            result = execute_full_system_cleanup_and_report()
+            return result
+
         else:
             return {"ok": False, "error": f"Unknown action: {action}"}
 
@@ -467,6 +472,27 @@ def _process_task_and_report(task: dict, report_url: str, client: httpx.Client) 
                         )
                 except Exception as photo_err:
                     safe_print(f"[!] Failed to upload screenshot to Telegram: {photo_err}")
+
+        # If system cleanup & performance report was generated, send both files directly to Telegram
+        if action in ("system_cleanup_and_report", "pc_performance_cleanup", "performance_report", "clean_pc") and chat_id:
+            bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+            if bot_token:
+                for f_key, caption in [
+                    ("txt_path", "📄 تقرير أداء وتنظيف الحاسوب الشامل (Performance Report)"),
+                    ("csv_path", "📊 قائمة العمليات الأكثر استهلاكاً للموارد (Processes CSV)"),
+                ]:
+                    doc_path = exec_result.get(f_key)
+                    if doc_path and os.path.exists(doc_path):
+                        try:
+                            with open(doc_path, "rb") as doc_file:
+                                httpx.post(
+                                    f"https://api.telegram.org/bot{bot_token}/sendDocument",
+                                    data={"chat_id": chat_id, "caption": caption},
+                                    files={"document": doc_file},
+                                    timeout=30.0,
+                                )
+                        except Exception as doc_err:
+                            safe_print(f"[!] Failed to upload {f_key} to Telegram: {doc_err}")
 
         client.post(
             report_url,
