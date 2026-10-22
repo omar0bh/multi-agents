@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from app.config import TASK_TIMEOUT_SECONDS
 from app.orchestration.policies import classify_task, routing_reason
@@ -9,15 +9,23 @@ logger = logging.getLogger(__name__)
 
 def _run_agent(workflow: str, task: str) -> dict:
     registry = get_registry()
-    agent = registry[workflow]
+    agent = registry.get(workflow) or registry["general"]
 
-    if workflow == "coding":
+    try:
+        if workflow == "coding":
+            return agent.run(task)
+        if workflow == "business":
+            return agent.run(task)
         return agent.run(task)
-
-    if workflow == "business":
-        return agent.run(task)
-
-    return agent.run(task)
+    except Exception as exc:
+        logger.warning(
+            "Agent '%s' failed with %s; falling back to direct LLM completion",
+            workflow,
+            exc,
+        )
+        from app.llm import call_raw_llm
+        raw_answer = call_raw_llm(task)
+        return {"answer": raw_answer}
 
 
 class Orchestrator:

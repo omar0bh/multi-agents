@@ -37,9 +37,14 @@ async def parse_file_operation_intent(text: str) -> dict:
     if not cleaned:
         return {"is_file_op": False}
 
+    # Long messages (>400 chars) are almost never file ops — they are AI/chat requests.
+    # Skip the LLM call entirely to avoid json_validate_failed on Groq.
+    if len(cleaned) > 400:
+        return {"is_file_op": False}
+
     lowered = cleaned.lower()
 
-    # Quick pre-filter: check if message likely mentions files, folders, or PC operations
+    # Quick pre-filter: check if message likely mentions files, folders, PC, or desktop operations
     indicators = (
         "copy", "kopi", "copier", "past", "paste", "coller", "colle",
         "file", "fichier", "folder", "dossier", "dossiers", "files",
@@ -50,10 +55,52 @@ async def parse_file_operation_intent(text: str) -> dict:
         "move ", "rename ", "déplacer", "renommer",
         "delete ", "supprimer", "mse7", "khwi",
         "list ", "ls ", "شكون كاين", "أظهر الملفات",
-        "انسخ", "نسخ", "انقل", "نقل", "احذف", "حذف", "انشئ مجلد", "صاوب مجلد", "دير مجلد"
+        "انسخ", "نسخ", "انقل", "نقل", "احذف", "حذف", "انشئ مجلد", "صاوب مجلد", "دير مجلد",
+        # Desktop vision & layout
+        "screenshot", "screen", "chof desktop", "chof ldesktop", "chof lscreen",
+        "rattab", "ratteb", "rttb", "arrange", "organise", "organiz",
+        "wrinh desktop", "wrin l desktop", "aikon", "icons", "aykonat",
+        "شوف الشاشة", "رتب الأيقونات", "صورة الشاشة", "أيقونات",
     )
     if not any(ind in lowered for ind in indicators):
         return {"is_file_op": False}
+
+    # ── Fast path: desktop vision / layout commands (no LLM needed) ──────────
+    _desktop_screenshot_kw = (
+        "screenshot", "chof desktop", "chof ldesktop", "chof lscreen",
+        "wrinh desktop", "wrin l desktop", "شوف الشاشة", "صورة الشاشة",
+    )
+    _desktop_arrange_kw = (
+        "rattab", "ratteb", "rttb", "arrange", "organise", "organiz",
+        "رتب", "ترتيب",
+    )
+    _desktop_icons_kw = (
+        "aikon", "icons", "aykonat", "list icons", "أيقونات",
+    )
+    if any(kw in lowered for kw in _desktop_screenshot_kw):
+        return {
+            "is_file_op": True,
+            "action": "screenshot_analyze",
+            "src": "", "dest_folder": "", "is_folder": False,
+            "label_ar": "خذ screenshot وحلل الديسكتوب بالذكاء الاصطناعي",
+        }
+    if any(kw in lowered for kw in _desktop_arrange_kw) and (
+        "desktop" in lowered or "icon" in lowered or "aikon" in lowered
+        or "rattab" in lowered or "ratteb" in lowered or "arrange" in lowered
+    ):
+        return {
+            "is_file_op": True,
+            "action": "arrange_desktop",
+            "src": "", "dest_folder": "", "is_folder": False,
+            "label_ar": "رتب أيقونات الديسكتوب حسب النوع (تطبيقات، مجلدات، system)",
+        }
+    if any(kw in lowered for kw in _desktop_icons_kw):
+        return {
+            "is_file_op": True,
+            "action": "get_icons",
+            "src": "", "dest_folder": "", "is_folder": False,
+            "label_ar": "اعرض قائمة أيقونات الديسكتوب ومواقعها",
+        }
 
     # 1. Try Groq LLM parsing (super fast and accurate for Darija & multi-language)
     if GROQ_API_KEY:
@@ -68,7 +115,7 @@ User instruction:
 Return ONLY a valid JSON object matching this schema:
 {{
     "is_pc_operation": true or false,
-    "action": "copy_file" | "create_folder" | "create_file" | "read_file" | "move_file" | "delete_path" | "list_dir" | "none",
+    "action": "copy_file" | "create_folder" | "create_file" | "read_file" | "move_file" | "delete_path" | "list_dir" | "screenshot_analyze" | "arrange_desktop" | "get_icons" | "none",
     "is_folder": true or false,
     "src": "source file or folder name (e.g. 'new' or 'doc sami/new' or 'report.txt')",
     "src_parent": "parent folder of source if mentioned (e.g. 'doc sami' or 'desktop')",
@@ -85,6 +132,9 @@ IMPORTANT:
 - If user wants to move or rename, action is 'move_file'.
 - If user wants to delete/remove a file or folder, action is 'delete_path'.
 - If user wants to list contents of a directory, action is 'list_dir'.
+- If user says 'chof desktop', 'screenshot', 'wrinh ldesktop', 'شوف الشاشة': action is 'screenshot_analyze'.
+- If user says 'rattab desktop', 'arrange icons', 'رتب الأيقونات': action is 'arrange_desktop'.
+- If user says 'list icons', 'aikon', 'wrinh laykonat': action is 'get_icons'.
 - NEVER make up or hallucinate filenames that the user did not mention! If no file/folder is named, leave 'src' empty.
 """
             async with httpx.AsyncClient(timeout=12.0) as client:
@@ -102,9 +152,14 @@ IMPORTANT:
                     },
                 )
                 if resp.status_code == 200:
-                    data = resp.json()["choices"][0]["message"]["content"]
-                    parsed = json.loads(data)
+                    try:
+                        data = resp.json()["choices"][0]["message"]["content"]
+                        parsed = json.loads(data)
+                    except Exception as parse_exc:
+                        logger.warning("Groq response parse error: %s", parse_exc)
+                        return {"is_file_op": False}
                     if parsed.get("is_pc_operation") and parsed.get("action") not in ("none", ""):
+
                         action = parsed.get("action")
                         src = (parsed.get("src") or "").strip()
                         src_parent = (parsed.get("src_parent") or "").strip()

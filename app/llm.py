@@ -54,7 +54,7 @@ def configure_dspy():
             model=LLM_MODEL,
             api_key=GROQ_API_KEY,
             temperature=0.2,
-            max_tokens=2048,
+            max_tokens=4096,
             num_retries=3,
         )
     else:
@@ -68,13 +68,55 @@ def configure_dspy():
             api_key=OPENCODE_ZEN_API_KEY,
             api_base=LLM_API_BASE,
             temperature=0.2,
-            max_tokens=2048,
+            max_tokens=4096,
             engine="litellm",
             num_retries=3,
         )
 
     dspy.configure(lm=lm)
     _configured = True
+
+
+def call_raw_llm(prompt: str, system_prompt: str | None = None) -> str:
+    """Guaranteed fallback LLM call without structured JSON mode.
+    Never fails with json_validate_failed.
+    """
+    import logging
+    _logger = logging.getLogger(__name__)
+
+    if LLM_MODEL.startswith("groq/") and GROQ_API_KEY:
+        model = LLM_MODEL.replace("groq/", "")
+        sys_msg = system_prompt or (
+            "You are a helpful, direct AI assistant and autonomous employee. "
+            "Respond in the same language as the user (Darija, Arabic, English, or French). "
+            "Provide detailed, high-quality, practical answers and action steps."
+        )
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                resp = client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": sys_msg},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 4096,
+                    },
+                )
+                if resp.status_code == 200:
+                    return resp.json()["choices"][0]["message"]["content"]
+                else:
+                    _logger.error("Raw LLM call returned status %s: %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            _logger.error("Raw LLM call exception: %s", e)
+
+    return "عذراً، حدث ضغط مؤقت في الاتصال بالذكاء الاصطناعي. يرجى إعادة المحاولة بعد قليل."
 
 
 FREE_TIER_EXTERNAL_MARKER = (

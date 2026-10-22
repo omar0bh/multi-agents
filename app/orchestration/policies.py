@@ -20,9 +20,10 @@ def classify_task(task: str) -> str:
     # ── CODING ────────────────────────────────────────────────────────────────
     if any(x in text for x in (
         "write code", "coding", "debug", "python", "javascript", "typescript",
-        "program", "script", "code", "function", "class", "api", "backend",
+        "write script", "write program", "programming", "source code", "function", "class",
+        "rest api", "api endpoint", "create api", "backend",
         "frontend", "html", "css", "react", "node", "django", "flask",
-        "برمجة", "كود", "اكتب كود", "سكريبت", "برنامج",
+        "برمجة", "اكتب كود", "سكريبت", "برمج",
         "kateb code", "dir code", "sawb code", "sawb site", "sawb app",
         "programme", "coder", "développer",
     )):

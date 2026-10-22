@@ -395,6 +395,45 @@ def execute_local_task(action: str, params: dict) -> dict:
                 "detail": f"تم إنشاء الملف `{filename}` بنجاح في:\n`{file_path}`",
             }
 
+        # ── Desktop Vision & Layout ──────────────────────────────────────────
+        elif action in ("screenshot_analyze", "desktop_analyze", "chof_desktop"):
+            from app.tools.desktop_manager import cmd_screenshot_and_analyze
+            result = cmd_screenshot_and_analyze()
+            cats = result.get("categories", {})
+            summary_lines = [f"- **{cat}** ({len(names)}): {', '.join(names[:5])}" for cat, names in cats.items()]
+            result["detail"] = (
+                f"📸 **تحليل الديسكتوب:**\n{result.get('description','')}\n\n"
+                + "\n".join(summary_lines)
+                + f"\n\n📁 الصورة محفوظة: `{result.get('screenshot_path','')}`"
+            )
+            result["ok"] = "error" not in result
+            return result
+
+        elif action in ("get_icons", "list_icons", "desktop_icons"):
+            from app.tools.desktop_manager import cmd_get_icon_list
+            result = cmd_get_icon_list()
+            lines = [f"  [{i['index']}] {i['name']}  ({i['x']},{i['y']})" for i in result["icons"]]
+            result["detail"] = f"🖥️ **أيقونات الديسكتوب ({result['count']}):**\n" + "\n".join(lines)
+            result["ok"] = True
+            return result
+
+        elif action in ("arrange_desktop", "arrange_icons", "rattab_desktop"):
+            from app.tools.desktop_manager import cmd_arrange_by_category
+            rules = params.get("rules") or {}
+            result = cmd_arrange_by_category(rules=rules)
+            moved = result.get("moved", [])
+            not_found = result.get("not_found", [])
+            lines = [f"  ✅ {m['name']} → {m['zone']}" for m in moved]
+            if not_found:
+                lines.append(f"  ❌ مش لقيتهم: {', '.join(not_found)}")
+            result["detail"] = (
+                f"🗂️ **تم ترتيب الديسكتوب!**\n"
+                f"{result.get('analysis','')}\n\n"
+                + "\n".join(lines)
+            )
+            result["ok"] = True
+            return result
+
         else:
             return {"ok": False, "error": f"Unknown action: {action}"}
 
@@ -413,6 +452,22 @@ def _process_task_and_report(task: dict, report_url: str, client: httpx.Client) 
     exec_result["action"] = action  # include action in result for notification
 
     try:
+        # If a screenshot was taken, send the photo directly to the user on Telegram
+        if action in ("screenshot_analyze", "desktop_analyze", "chof_desktop") and chat_id:
+            bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+            img_path = exec_result.get("screenshot_path")
+            if bot_token and img_path and os.path.exists(img_path):
+                try:
+                    with open(img_path, "rb") as photo_file:
+                        httpx.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendPhoto",
+                            data={"chat_id": chat_id, "caption": "📸 **صورة شاشة حاسوبك الشخصي (Desktop Screenshot)**"},
+                            files={"photo": photo_file},
+                            timeout=30.0,
+                        )
+                except Exception as photo_err:
+                    safe_print(f"[!] Failed to upload screenshot to Telegram: {photo_err}")
+
         client.post(
             report_url,
             json={

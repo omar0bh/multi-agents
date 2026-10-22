@@ -972,7 +972,13 @@ class TelegramEmployeeBot:
 
         except Exception as exc:
             logger.exception("Error processing message in Telegram bot: %s", exc)
-            await self.send_message(chat_id, f"❌ حدث خطأ أثناء تنفيذ المهمة: {exc}")
+            try:
+                from app.llm import call_raw_llm
+                fallback_reply = call_raw_llm(text_stripped)
+                await self.send_message(chat_id, f"💡 **الإجابة:**\n\n{fallback_reply}")
+            except Exception as fb_exc:
+                logger.exception("Fallback also failed: %s", fb_exc)
+                await self.send_message(chat_id, f"❌ حدث خطأ مؤقت في الاتصال: {exc}")
 
     async def handle_user_photo(self, chat_id: int, file_id: str, caption: str, user_id: int):
         """Process photos with Gemini Vision, cross-verified and fact-checked by Groq."""
