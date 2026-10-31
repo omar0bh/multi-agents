@@ -77,8 +77,27 @@ pytest tests\ -q -m integration   # optional live LLM (skips if free-tier blocke
 
 See [docs/aws-architecture.md](docs/aws-architecture.md) for a recommended AWS layout (documentation only).
 
+## Cloud-to-Local Bridge
+
+The local PC bridge has been upgraded in place.  See
+[docs/bridge-upgrade.md](docs/bridge-upgrade.md) for architecture, actions,
+workflows, cloud routing, security policy, endpoints and environment variables.
+
+Run the local daemon:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\local_bridge.py
+```
+
+Bridge tests are included in the normal suite:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests -q
+```
+
 ## Security
 
 - `.env` is gitignored; never commit API keys
 - Business workflows are plans only, not executed actions
 - Do not expose code execution without a sandbox
+- Bridge critical Windows paths, boot/recovery, drivers, hives and UAC bypasses are blocked even with an approval token
