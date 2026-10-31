@@ -15,9 +15,11 @@ pip install -r requirements.txt
 # Browser automation is optional.  Install it only when needed.
 if [ "${INSTALL_PLAYWRIGHT:-1}" = "1" ]; then
     pip install playwright
-    playwright install chromium
-    # System libraries for Chromium (requires sudo on the host):
-    # playwright install-deps chromium
+    # This project uses Brave as the Chromium-based browser engine.
+    if ! command -v brave-browser >/dev/null 2>&1 && ! command -v brave >/dev/null 2>&1; then
+        echo "Brave browser is not installed. Install it with: sudo apt install brave-browser"
+        echo "Then set BRAVE_EXECUTABLE_PATH if it is installed in a non-standard location."
+    fi
 fi
 
 echo "Automation environment is ready. Activate it with: source .venv/bin/activate"

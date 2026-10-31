@@ -93,8 +93,8 @@ For optional browser automation:
 ```bash
 source .venv/bin/activate
 pip install playwright
-playwright install chromium
-# sudo .venv/bin/playwright install-deps chromium
+sudo apt install brave-browser
+# export BRAVE_EXECUTABLE_PATH=/usr/bin/brave-browser
 ```
 
 Or run:
