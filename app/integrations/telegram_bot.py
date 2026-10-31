@@ -753,16 +753,25 @@ class TelegramEmployeeBot:
                 return
 
         # Command: Create Project / Website / Scaffold on Desktop
+        # Keep the legacy HTML scaffold only for generic project requests.
+        # If the user names a concrete tool/framework or gives an explicit path,
+        # let the generic command planner build and run the exact command instead.
+        _specific_tool = any(k in lowered for k in ("flutter", "npm", "npx", "react", "vite", "next", "django", "laravel", "dotnet", "spring"))
+        _explicit_path = bool(re.search(r"[A-Za-z]:[\\/]", text_stripped))
         is_create_intent = (
-            text_stripped.startswith(("/create", "/new", "/make"))
-            or (
-                any(p in lowered for p in ("create", "sawb ", "creer ", "créer ", "make "))
-                and any(k in lowered for k in ("project", "machro3", "site", "website", "app", "application"))
-            )
-            or any(
-                p in lowered for p in (
-                    "create project", "dir machro3", "cree projet", "sawb site",
-                    "creer site", "create website", "create site", "sawb li site"
+            not _specific_tool
+            and not _explicit_path
+            and (
+                text_stripped.startswith(("/create", "/new", "/make"))
+                or (
+                    any(p in lowered for p in ("create", "sawb ", "creer ", "créer ", "make "))
+                    and any(k in lowered for k in ("project", "machro3", "site", "website", "app", "application"))
+                )
+                or any(
+                    p in lowered for p in (
+                        "create project", "dir machro3", "cree projet", "sawb site",
+                        "creer site", "create website", "create site", "sawb li site"
+                    )
                 )
             )
         )
@@ -948,6 +957,51 @@ class TelegramEmployeeBot:
                 err = exec_res.get("stderr") or exec_res.get("error") or "Non-zero exit code."
                 await self.send_message(chat_id, f"⚠️ **فشل الأمر أو خرج بخطأ:**\n```\n{err[:3500]}\n```")
             return
+
+        # Generic command planning: let the owner ask for arbitrary PC work in
+        # natural language.  The planner returns one shell command (or None);
+        # execution still goes through the normal terminal/bridge safety path.
+        try:
+            from app.tools.command_planner import plan_shell_command
+
+            loop = asyncio.get_running_loop()
+            planned_cmd = await loop.run_in_executor(None, plan_shell_command, text_stripped)
+        except Exception as exc:
+            logger.warning("Command planning unavailable: %s", exc)
+            planned_cmd = None
+
+        if planned_cmd:
+            await self.send_message(chat_id, f"⚙️ **جاري تنفيذ الأمر المخطط:**\n`{planned_cmd}`")
+            import os as _os
+
+            if _os.name != "nt":
+                if bridge_manager.is_online:
+                    task_id = bridge_manager.queue_task("run_command", {"cmd": planned_cmd}, chat_id=chat_id)
+                    await self.send_message(
+                        chat_id,
+                        f"🌉 **جاري تنفيذ الأمر على حاسوبك الشخصي عبر الجسر...**\n"
+                        f"⏳ Task ID: `{task_id}` — ستصلك النتيجة فور اكتمالها.",
+                    )
+                else:
+                    task_id = bridge_manager.queue_task("run_command", {"cmd": planned_cmd}, chat_id=chat_id)
+                    await self.send_message(
+                        chat_id,
+                        f"📥 **حاسوبك الشخصي غير متصل حالياً بالجسر (Offline).**\n"
+                        f"تم حفظ الأمر في الطابور (Task `{task_id}`).",
+                    )
+                return
+            else:
+                exec_res = run_safe_command(planned_cmd)
+                if exec_res.get("blocked"):
+                    await self.send_message(chat_id, f"❌ **تم حظر الأمر لأسباب أمنية:**\n{exec_res.get('error')}")
+                    return
+                if exec_res.get("ok"):
+                    output = exec_res.get("stdout") or "Command completed with no output."
+                    await self.send_message(chat_id, f"✅ **تم تنفيذ الأمر بنجاح:**\n```\n{output[:3500]}\n```")
+                else:
+                    err = exec_res.get("stderr") or exec_res.get("error") or "Non-zero exit code."
+                    await self.send_message(chat_id, f"❌ **فشل تنفيذ الأمر:**\n```\n{err[:3500]}\n```")
+                return
 
         # Standard Multi-Agent Execution
         self.last_chat_id = chat_id
