@@ -77,6 +77,32 @@ pytest tests\ -q -m integration   # optional live LLM (skips if free-tier blocke
 
 See [docs/aws-architecture.md](docs/aws-architecture.md) for a recommended AWS layout (documentation only).
 
+## Python Environment (Linux / Ubuntu)
+
+Ubuntu's system Python is externally managed (PEP 668).  Do not use
+`pip install` directly on the OS Python.  Use the project virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+For optional browser automation:
+
+```bash
+source .venv/bin/activate
+pip install playwright
+playwright install chromium
+# sudo .venv/bin/playwright install-deps chromium
+```
+
+Or run:
+
+```bash
+bash aws_deploy/install_automation.sh
+```
+
 ## Cloud-to-Local Bridge
 
 The local PC bridge has been upgraded in place.  See
