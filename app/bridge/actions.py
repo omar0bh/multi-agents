@@ -1518,6 +1518,84 @@ def action_verify(params: dict[str, Any], ctx: ExecutionContext, executor: Any) 
     }
 
 
+# ---------------------------------------------------------------------------
+# Automation (browser, mail, scraping, outreach)
+# ---------------------------------------------------------------------------
+
+
+@register("browser_scrape", category="automation", description="Scrape a web page with optional CSS selector (Playwright optional)", risk="medium")
+def action_browser_scrape(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
+    from app.automation.browser import BrowserAutomationEngine
+
+    engine = BrowserAutomationEngine(headless=bool(params.get("headless", True)))
+    result = engine.scrape_page(str(params.get("url") or ""), params.get("selector"), int(params.get("timeout_ms", 30000)))
+    result.setdefault("action", "browser_scrape")
+    return result
+
+
+@register("email_read", category="automation", description="Read unread emails through IMAP", risk="medium")
+def action_email_read(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
+    from app.automation.mail import MailAutomation
+
+    mailer = MailAutomation(
+        str(params.get("imap_host") or ""),
+        str(params.get("smtp_host") or params.get("imap_host") or ""),
+        str(params.get("username") or ""),
+        str(params.get("password") or ""),
+        int(params.get("imap_port", 993)),
+    )
+    result = mailer.list_unread(str(params.get("folder", "INBOX")), int(params.get("limit", 20)))
+    result.setdefault("action", "email_read")
+    return result
+
+
+@register("email_reply", category="automation", description="Send an email reply through SMTP", risk="medium")
+def action_email_reply(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
+    from app.automation.mail import MailAutomation
+
+    mailer = MailAutomation(
+        str(params.get("imap_host") or params.get("smtp_host") or ""),
+        str(params.get("smtp_host") or ""),
+        str(params.get("username") or ""),
+        str(params.get("password") or ""),
+        smtp_port=int(params.get("smtp_port", 587)),
+    )
+    result = mailer.reply(str(params.get("to") or ""), str(params.get("subject") or ""), str(params.get("body") or ""), params.get("from_address"))
+    result.setdefault("action", "email_reply")
+    return result
+
+
+@register("lead_scrape", category="automation", description="Fetch public pages and extract emails/phones", risk="medium")
+def action_lead_scrape(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
+    from app.automation.scraper import LeadScraper
+
+    urls = params.get("urls") or params.get("url") or []
+    if isinstance(urls, str):
+        urls = [urls]
+    result = LeadScraper(timeout=int(params.get("timeout", 20))).fetch_leads_from_urls(list(urls))
+    result.setdefault("action", "lead_scrape")
+    return result
+
+
+@register("outreach_campaign", category="automation", description="Generate or send outreach proposals from scraped leads", risk="high")
+def action_outreach_campaign(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
+    from app.automation.mail import MailAutomation
+    from app.automation.outreach import OutreachEngine
+
+    mailer = MailAutomation(
+        str(params.get("imap_host") or params.get("smtp_host") or ""),
+        str(params.get("smtp_host") or ""),
+        str(params.get("username") or ""),
+        str(params.get("password") or ""),
+        smtp_port=int(params.get("smtp_port", 587)),
+    )
+    engine = OutreachEngine(mailer)
+    leads = params.get("leads") or []
+    result = engine.send_campaign(list(leads), dry_run=bool(params.get("dry_run", True)))
+    result.setdefault("action", "outreach_campaign")
+    return result
+
+
 @register("wait", category="general", description="Wait for a bounded duration (useful between workflow steps)")
 def action_wait(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
     seconds = max(0.0, min(float(params.get("seconds", params.get("timeout", 1))), 300.0))
