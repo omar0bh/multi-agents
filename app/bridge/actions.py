@@ -1527,7 +1527,7 @@ def action_verify(params: dict[str, Any], ctx: ExecutionContext, executor: Any) 
 def action_browser_scrape(params: dict[str, Any], ctx: ExecutionContext, executor: Any) -> dict[str, Any]:
     from app.automation.browser import BrowserAutomationEngine
 
-    engine = BrowserAutomationEngine(headless=bool(params.get("headless", True)))
+    engine = BrowserAutomationEngine(headless=bool(params.get("headless", True)), browser=str(params.get("browser") or "brave"))
     result = engine.scrape_page(str(params.get("url") or ""), params.get("selector"), int(params.get("timeout_ms", 30000)))
     result.setdefault("action", "browser_scrape")
     return result

@@ -17,9 +17,9 @@ from pathlib import Path
 
 
 class BrowserAutomationEngine:
-    def __init__(self, headless: bool = True, browser: str = "brave"):
+    def __init__(self, headless: bool = True, browser: str | None = None):
         self.headless = headless
-        self.browser = (browser or "brave").lower().strip()
+        self.browser = (browser or os.getenv("BROWSER_ENGINE", "brave")).lower().strip()
 
     def brave_executable(self) -> str | None:
         explicit = os.getenv("BRAVE_EXECUTABLE_PATH")
